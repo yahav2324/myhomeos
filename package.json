@@ -5,10 +5,13 @@
   "scripts": {
     "telemetry": "nx run simulator:telemetry",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "prepare": "husky"
   },
   "private": true,
   "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
     "@eslint/js": "^9.8.0",
     "@expo/cli": "~54.0.16",
     "@nestjs/schematics": "^11.0.0",
@@ -37,6 +40,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react": "7.35.0",
     "eslint-plugin-react-hooks": "5.0.0",
+    "husky": "^9.1.7",
     "metro-config": "~0.83.0",
     "metro-resolver": "~0.83.0",
     "nx": "22.3.3",
