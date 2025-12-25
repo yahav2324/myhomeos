@@ -12,7 +12,6 @@
     "expo-splash-screen": "*",
     "expo-status-bar": "*",
     "expo-system-ui": "*",
-    "jest-expo": "*",
     "metro-config": "*",
     "metro-resolver": "*",
     "react": "*",

@@ -27,11 +27,7 @@ export const App = () => {
       >
         <View style={styles.section}>
           <Text style={styles.textLg}>Hello there,</Text>
-          <Text
-            style={[styles.textXL, styles.appTitleText]}
-            testID="heading"
-            role="heading"
-          >
+          <Text style={[styles.textXL, styles.appTitleText]} testID="heading" role="heading">
             Welcome Mobile 👋
           </Text>
         </View>
@@ -52,9 +48,7 @@ export const App = () => {
                   d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
                 />
               </Svg>
-              <Text style={[styles.textLg, styles.heroTitleText]}>
-                You're up and running
-              </Text>
+              <Text style={[styles.textLg, styles.heroTitleText]}>You're up and running</Text>
             </View>
             <TouchableOpacity
               style={styles.whatsNextButton}
@@ -65,32 +59,20 @@ export const App = () => {
                 });
               }}
             >
-              <Text style={[styles.textMd, styles.textCenter]}>
-                What's next?
-              </Text>
+              <Text style={[styles.textMd, styles.textCenter]}>What's next?</Text>
             </TouchableOpacity>
           </View>
         </View>
         <View style={styles.section}>
           <View style={[styles.shadowBox]}>
-            <Text style={[styles.marginBottomMd, styles.textLg]}>
-              Learning materials
-            </Text>
+            <Text style={[styles.marginBottomMd, styles.textLg]}>Learning materials</Text>
             <TouchableOpacity
               style={[styles.listItem, styles.learning]}
               onPress={() =>
-                Linking.openURL(
-                  'https://nx.dev/getting-started/intro?utm_source=nx-project',
-                )
+                Linking.openURL('https://nx.dev/getting-started/intro?utm_source=nx-project')
               }
             >
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -100,17 +82,9 @@ export const App = () => {
               </Svg>
               <View style={styles.listItemTextContainer}>
                 <Text style={[styles.textMd]}>Documentation</Text>
-                <Text style={[styles.text2XS, styles.textSubtle]}>
-                  Everything is in there
-                </Text>
+                <Text style={[styles.text2XS, styles.textSubtle]}>Everything is in there</Text>
               </View>
-              <Svg
-                width={18}
-                height={18}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={18} height={18} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -121,17 +95,9 @@ export const App = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.listItem, styles.learning]}
-              onPress={() =>
-                Linking.openURL('https://nx.dev/blog/?utm_source=nx-project')
-              }
+              onPress={() => Linking.openURL('https://nx.dev/blog/?utm_source=nx-project')}
             >
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -145,13 +111,7 @@ export const App = () => {
                   Changelog, features & events
                 </Text>
               </View>
-              <Svg
-                width={18}
-                height={18}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={18} height={18} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -163,9 +123,7 @@ export const App = () => {
             <TouchableOpacity
               style={[styles.listItem, styles.learning]}
               onPress={() =>
-                Linking.openURL(
-                  'https://www.youtube.com/@NxDevtools/videos?utm_source=nx-project',
-                )
+                Linking.openURL('https://www.youtube.com/@NxDevtools/videos?utm_source=nx-project')
               }
             >
               <Svg width={24} height={24} fill="#000000" viewBox="0 0 24 24">
@@ -173,17 +131,9 @@ export const App = () => {
               </Svg>
               <View style={styles.listItemTextContainer}>
                 <Text style={[styles.textMd]}>Youtube channel</Text>
-                <Text style={[styles.text2XS, styles.textSubtle]}>
-                  Nx Show, talks & tutorials
-                </Text>
+                <Text style={[styles.text2XS, styles.textSubtle]}>Nx Show, talks & tutorials</Text>
               </View>
-              <Svg
-                width={18}
-                height={18}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={18} height={18} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -194,17 +144,9 @@ export const App = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.listItem, styles.learning]}
-              onPress={() =>
-                Linking.openURL('https://nx.dev/nx-api/expo/documents/overview')
-              }
+              onPress={() => Linking.openURL('https://nx.dev/nx-api/expo/documents/overview')}
             >
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -214,17 +156,9 @@ export const App = () => {
               </Svg>
               <View style={styles.listItemTextContainer}>
                 <Text style={[styles.textMd]}>Interactive tutorials</Text>
-                <Text style={[styles.text2XS, styles.textSubtle]}>
-                  Create an app, step by step
-                </Text>
+                <Text style={[styles.text2XS, styles.textSubtle]}>Create an app, step by step</Text>
               </View>
-              <Svg
-                width={18}
-                height={18}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={18} height={18} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -237,27 +171,17 @@ export const App = () => {
         </View>
         <View style={styles.section}>
           <TouchableOpacity
-            onPress={() =>
-              Linking.openURL('https://nx.dev/nx-cloud?utm_source=nx-project')
-            }
+            onPress={() => Linking.openURL('https://nx.dev/nx-cloud?utm_source=nx-project')}
           >
             <View style={[styles.listItem, styles.shadowBox]}>
               <Svg width={48} height={48} fill="#000000" viewBox="0 0 24 24">
                 <Path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
               </Svg>
               <View style={styles.listItemTextContainer}>
-                <Text
-                  style={[
-                    styles.textMd,
-                    styles.textBold,
-                    styles.marginBottomSm,
-                  ]}
-                >
+                <Text style={[styles.textMd, styles.textBold, styles.marginBottomSm]}>
                   Nx is open source
                 </Text>
-                <Text style={[styles.textXS, styles.textLight]}>
-                  Love Nx? Give us a star!
-                </Text>
+                <Text style={[styles.textXS, styles.textLight]}>Love Nx? Give us a star!</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -271,22 +195,11 @@ export const App = () => {
             }
           >
             <View style={[styles.listItem, styles.learning]}>
-              <Svg
-                width={48}
-                height={48}
-                fill="rgba(0, 122, 204, 1)"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={48} height={48} fill="rgba(0, 122, 204, 1)" viewBox="0 0 24 24">
                 <Path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
               </Svg>
               <View style={styles.listItemTextContainer}>
-                <Text
-                  style={[
-                    styles.textMd,
-                    styles.textBold,
-                    styles.marginBottomSm,
-                  ]}
-                >
+                <Text style={[styles.textMd, styles.textBold, styles.marginBottomSm]}>
                   Install Nx Console for VSCode
                 </Text>
                 <Text style={[styles.textXS, styles.textLight]}>
@@ -299,11 +212,7 @@ export const App = () => {
 
         <View style={[styles.section, styles.shadowBox]}>
           <TouchableOpacity
-            onPress={() =>
-              Linking.openURL(
-                'https://plugins.jetbrains.com/plugin/21060-nx-console',
-              )
-            }
+            onPress={() => Linking.openURL('https://plugins.jetbrains.com/plugin/21060-nx-console')}
           >
             <View style={[styles.listItem, styles.learning]}>
               <Svg width={48} height={48} viewBox="20 20 60 60">
@@ -322,13 +231,7 @@ export const App = () => {
                 </G>
               </Svg>
               <View style={styles.listItemTextContainer}>
-                <Text
-                  style={[
-                    styles.textMd,
-                    styles.textBold,
-                    styles.marginBottomSm,
-                  ]}
-                >
+                <Text style={[styles.textMd, styles.textBold, styles.marginBottomSm]}>
                   Install Nx Console for JetBrains
                 </Text>
                 <Text style={[styles.textXS, styles.textLight]}>
@@ -340,9 +243,7 @@ export const App = () => {
         </View>
         <View style={styles.section}>
           <TouchableOpacity
-            onPress={() =>
-              Linking.openURL('https://nx.dev/nx-cloud?utm_source=nx-project')
-            }
+            onPress={() => Linking.openURL('https://nx.dev/nx-cloud?utm_source=nx-project')}
           >
             <View style={styles.shadowBox}>
               <View style={[styles.listItem, styles.learning]}>
@@ -364,13 +265,7 @@ export const App = () => {
                   />
                 </Svg>
                 <View style={styles.listItemTextContainer}>
-                  <Text
-                    style={[
-                      styles.textMd,
-                      styles.textBold,
-                      styles.marginBottomSm,
-                    ]}
-                  >
+                  <Text style={[styles.textMd, styles.textBold, styles.marginBottomSm]}>
                     Nx Cloud
                   </Text>
                   <Text style={[styles.textSm, styles.textLight]}>
@@ -380,8 +275,7 @@ export const App = () => {
               </View>
               <View style={styles.listItemTextContainer}>
                 <Text style={[styles.textXS, styles.textLight]}>
-                  You can activate distributed tasks executions and caching by
-                  running:
+                  You can activate distributed tasks executions and caching by running:
                 </Text>
               </View>
               <View style={styles.codeBlock}>
@@ -399,22 +293,12 @@ export const App = () => {
           }}
         >
           <View style={styles.shadowBox}>
-            <Text style={[styles.textLg, styles.marginBottomMd]}>
-              Next steps
-            </Text>
-            <Text
-              style={[styles.textSm, styles.textLight, styles.marginBottomMd]}
-            >
+            <Text style={[styles.textLg, styles.marginBottomMd]}>Next steps</Text>
+            <Text style={[styles.textSm, styles.textLight, styles.marginBottomMd]}>
               Here are some things you can do with Nx:
             </Text>
             <View style={styles.listItem}>
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -427,46 +311,26 @@ export const App = () => {
               </View>
             </View>
             <View style={styles.codeBlock}>
-              <Text style={[styles.textXS, styles.monospace, styles.comment]}>
-                # Build
-              </Text>
-              <Text
-                style={[styles.textXS, styles.monospace, styles.marginBottomMd]}
-              >
+              <Text style={[styles.textXS, styles.monospace, styles.comment]}># Build</Text>
+              <Text style={[styles.textXS, styles.monospace, styles.marginBottomMd]}>
                 nx build Mobile
               </Text>
-              <Text style={[styles.textXS, styles.monospace, styles.comment]}>
-                # Test
-              </Text>
-              <Text
-                style={[styles.textXS, styles.monospace, styles.marginBottomMd]}
-              >
+              <Text style={[styles.textXS, styles.monospace, styles.comment]}># Test</Text>
+              <Text style={[styles.textXS, styles.monospace, styles.marginBottomMd]}>
                 nx test Mobile
               </Text>
-              <Text style={[styles.textXS, styles.monospace, styles.comment]}>
-                # Lint
-              </Text>
-              <Text style={[styles.textXS, styles.monospace]}>
-                nx lint Mobile
-              </Text>
+              <Text style={[styles.textXS, styles.monospace, styles.comment]}># Lint</Text>
+              <Text style={[styles.textXS, styles.monospace]}>nx lint Mobile</Text>
               <Text style={[styles.textXS, styles.monospace, styles.comment]}>
                 # Run them together!
               </Text>
-              <Text
-                style={[styles.textXS, styles.monospace, styles.marginBottomMd]}
-              >
+              <Text style={[styles.textXS, styles.monospace, styles.marginBottomMd]}>
                 nx run-many -p Mobile -t build test lint
               </Text>
             </View>
 
             <View style={styles.listItem}>
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -479,18 +343,10 @@ export const App = () => {
               </View>
             </View>
             <View style={[styles.codeBlock, styles.marginBottomLg]}>
-              <Text style={[styles.textXS, styles.monospace]}>
-                nx show project Mobile
-              </Text>
+              <Text style={[styles.textXS, styles.monospace]}>nx show project Mobile</Text>
             </View>
             <View style={styles.listItem}>
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -499,22 +355,14 @@ export const App = () => {
                 />
               </Svg>
               <View style={styles.listItemTextContainer}>
-                <Text style={styles.textSm}>
-                  View interactive project graph
-                </Text>
+                <Text style={styles.textSm}>View interactive project graph</Text>
               </View>
             </View>
             <View style={[styles.codeBlock, styles.marginBottomLg]}>
               <Text style={[styles.textXS, styles.monospace]}>nx graph</Text>
             </View>
             <View style={styles.listItem}>
-              <Svg
-                width={24}
-                height={24}
-                stroke="#000000"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <Svg width={24} height={24} stroke="#000000" fill="none" viewBox="0 0 24 24">
                 <Path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -530,21 +378,15 @@ export const App = () => {
               <Text style={[styles.textXS, styles.monospace, styles.comment]}>
                 # Generate UI lib
               </Text>
-              <Text
-                style={[styles.textXS, styles.monospace, styles.marginBottomMd]}
-              >
+              <Text style={[styles.textXS, styles.monospace, styles.marginBottomMd]}>
                 nx g @nx/react-native:lib ui
               </Text>
               <Text style={[styles.textXS, styles.monospace, styles.comment]}>
                 # Add a component
               </Text>
               <Text style={[styles.textXS, styles.monospace]}>nx g \</Text>
-              <Text style={[styles.textXS, styles.monospace]}>
-                @nx/react-native:component \
-              </Text>
-              <Text style={[styles.textXS, styles.monospace]}>
-                ui/src/lib/button
-              </Text>
+              <Text style={[styles.textXS, styles.monospace]}>@nx/react-native:component \</Text>
+              <Text style={[styles.textXS, styles.monospace]}>ui/src/lib/button</Text>
             </View>
           </View>
           <View style={[styles.listItem, styles.love]}>

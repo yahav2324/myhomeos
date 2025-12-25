@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/simulator/src",
   "projectType": "application",
-  "tags": [],
+  "tags": ["type:app"],
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
@@ -78,6 +78,13 @@
         "production": {
           "buildTarget": "simulator:build:production"
         }
+      }
+    },
+    "telemetry": {
+      "executor": "@nx/js:node",
+      "options": {
+        "buildTarget": "simulator:build",
+        "watch": true
       }
     }
   }

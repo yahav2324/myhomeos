@@ -1,1 +1,1 @@
-export * from './lib/core-logic';
+export * from './lib';

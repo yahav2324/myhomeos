@@ -1,9 +1,18 @@
 import nx from '@nx/eslint-plugin';
+import prettier from 'eslint-plugin-prettier';
+import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default [
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
   ...nx.configs['flat/javascript'],
+  eslintConfigPrettier,
+  {
+    plugins: { prettier },
+    rules: {
+      'prettier/prettier': 'error',
+    },
+  },
   {
     ignores: ['**/dist', '**/out-tsc'],
   },
@@ -37,6 +46,28 @@ export default [
       '**/*.mjs',
     ],
     // Override or add rules here
-    rules: {},
+    rules: {
+      '@nx/enforce-module-boundaries': [
+        'error',
+        {
+          enforceBuildableLibDependency: true,
+          allow: ['^.+/eslint\\.config\\.[cm]?[jt]s$'],
+          depConstraints: [
+            {
+              sourceTag: 'type:app',
+              onlyDependOnLibsWithTags: ['type:lib', 'scope:shared', 'scope:domain'],
+            },
+            {
+              sourceTag: 'scope:domain',
+              onlyDependOnLibsWithTags: ['scope:domain', 'scope:shared'],
+            },
+            {
+              sourceTag: 'scope:shared',
+              onlyDependOnLibsWithTags: ['scope:shared'],
+            },
+          ],
+        },
+      ],
+    },
   },
 ];
