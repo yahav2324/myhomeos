@@ -1,4 +1,4 @@
-import { createMachine, createActor } from 'xstate';
+import { createActor } from 'xstate';
 import { coreLogicMachine } from '@smart-kitchen/core-logic';
 
 async function sleep(ms: number) {
