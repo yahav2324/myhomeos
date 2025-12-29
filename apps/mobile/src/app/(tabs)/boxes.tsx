@@ -1,9 +1,5 @@
-import { View, Text } from 'react-native';
+import { BoxesScreen } from '../../features/BoxesScreen';
 
-export default function Boxes() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Boxes</Text>
-    </View>
-  );
+export default function BoxesRoute() {
+  return <BoxesScreen />;
 }
