@@ -1,2 +1,3 @@
 export * from './contracts';
-export * from './telemetry';
+export * from './schema/telemetry.schema';
+export * from './schema';
