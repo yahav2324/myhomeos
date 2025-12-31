@@ -1,12 +1,16 @@
-import type { BoxState } from '../../../shared/components/BoxProgressBar';
+import { BoxState } from '../../../shared/types';
 
 export type BoxItem = {
   id: string;
+  code: string;
   name: string;
-  capacity: number;
   unit: 'g' | 'ml';
+  deviceId: string;
+  fullQuantity?: number;
+  capacity?: number;
+  quantity: number;
   percent: number;
   state: BoxState;
-  quantity: number;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 };

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Pressable } from 'react-native';
 
 import type { RootStackParamList } from '../../../navigation/types';
 import { theme } from '../../../shared/theme/theme';
@@ -11,8 +12,8 @@ import { Card } from '../../../shared/ui/Card';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { BoxProgressBar } from '../../../shared/components/BoxProgressBar';
 import type { BoxItem } from '../model/types';
-import { mockBoxes } from '../model/mock';
 import { SkeletonBoxCard } from '../../../shared';
+import { useBoxesStore } from '../store/boxes.store';
 
 type BoxState = 'OK' | 'LOW' | 'EMPTY';
 
@@ -64,37 +65,15 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function BoxesScreen() {
   const navigation = useNavigation<Nav>();
-  const [initialLoading, setInitialLoading] = React.useState(true);
-
-  const [items, setItems] = React.useState<BoxItem[]>([]);
-  const [err, setErr] = React.useState<string | null>(null);
-  const [refreshing, setRefreshing] = React.useState(false);
-
-  const load = React.useCallback(async () => {
-    setErr(null);
-    try {
-      await new Promise((r) => setTimeout(r, 2000)); // mock delay
-      setItems(mockBoxes);
-    } catch (e: any) {
-      setErr(e?.message ?? 'Failed to load');
-    } finally {
-      setInitialLoading(false);
-    }
-  }, []);
+  const items = useBoxesStore((s) => s.items);
+  const initialLoading = useBoxesStore((s) => s.initialLoading);
+  const refreshing = useBoxesStore((s) => s.refreshing);
+  const err = useBoxesStore((s) => s.err);
+  const load = useBoxesStore((s) => s.load);
+  const refresh = useBoxesStore((s) => s.refresh);
 
   React.useEffect(() => {
-    void load();
-  }, [load]);
-
-  const onRefresh = React.useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await load();
-    } catch (e: any) {
-      setErr(e?.message ?? 'Failed to refresh');
-    } finally {
-      setRefreshing(false);
-    }
+    load();
   }, [load]);
 
   return (
@@ -104,8 +83,14 @@ export function BoxesScreen() {
           <AppText style={styles.title}>Boxes</AppText>
           <AppText tone="muted">Monitor fill levels in real time</AppText>
         </View>
-
-        <AppButton title="Create" onPress={() => navigation.navigate('CreateBox')} />
+        <AppButton
+          title="Create"
+          onPress={() =>
+            navigation.navigate('ConnectBox', {
+              onDone: refresh,
+            })
+          }
+        />
       </View>
 
       {err ? (
@@ -116,7 +101,7 @@ export function BoxesScreen() {
           <AppButton
             title="Retry"
             variant="ghost"
-            onPress={onRefresh}
+            onPress={refresh}
             style={{ marginTop: theme.space.md }}
           />
         </Card>
@@ -134,7 +119,11 @@ export function BoxesScreen() {
             title="No boxes yet"
             subtitle="Create your first smart storage box to start tracking."
             actionTitle="Create a box"
-            onAction={() => navigation.navigate('CreateBox')}
+            onAction={() => {
+              navigation.navigate('ConnectBox', {
+                onDone: refresh,
+              });
+            }}
           />
         </View>
       ) : (
@@ -142,7 +131,7 @@ export function BoxesScreen() {
           data={items}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           renderItem={({ item }) => <BoxCard item={item} />}
         />
       )}
@@ -154,6 +143,8 @@ function BoxCard({ item }: { item: BoxItem }) {
   const ago = timeAgo(item.updatedAt);
   const clock = item.updatedAt ? new Date(item.updatedAt).toLocaleTimeString() : null;
   const [, force] = React.useState(0);
+  const navigation = useNavigation<Nav>();
+
   React.useEffect(() => {
     const id = setInterval(() => force((x) => x + 1), 60_000);
     return () => clearInterval(id);
@@ -164,38 +155,54 @@ function BoxCard({ item }: { item: BoxItem }) {
       <View style={styles.cardTop}>
         <View style={{ flex: 1 }}>
           <AppText style={styles.cardTitle}>{item.name}</AppText>
-          <AppText tone="muted">{item.id}</AppText>
+          <AppText tone="muted">{item.code}</AppText>
         </View>
-        <View style={[styles.badgeBase, { backgroundColor: badgeBg(item.state) }]}>
-          <AppText style={[styles.badgeIcon, { color: badgeFg(item.state) }]}>
-            {badgeIcon(item.state)}
-          </AppText>
-          <AppText style={[styles.badgeText, { color: badgeFg(item.state) }]}>
-            {badgeLabel(item.state)}
-          </AppText>
+
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={() =>
+              navigation.navigate('SetFullLevel', {
+                boxId: item.id,
+                boxName: item.name,
+                unit: item.unit,
+                currentFullQuantity: item.fullQuantity ?? 0,
+                mode: 'recalibrate',
+              } as any)
+            }
+            hitSlop={10}
+            style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.75 }]}
+          >
+            <AppText style={styles.iconBtnText}>⚙️</AppText>
+          </Pressable>
+
+          <View style={[styles.badgeBase, { backgroundColor: badgeBg(item.state) }]}>
+            <AppText style={[styles.badgeIcon, { color: badgeFg(item.state) }]}>
+              {badgeIcon(item.state)}
+            </AppText>
+            <AppText style={[styles.badgeText, { color: badgeFg(item.state) }]}>
+              {badgeLabel(item.state)}
+            </AppText>
+          </View>
         </View>
       </View>
 
       <View style={{ marginTop: theme.space.md }}>
         <BoxProgressBar percent={item.percent} state={item.state} />
-      </View>
 
-      <View style={styles.metaRow}>
-        <AppText tone="muted">
-          Capacity:{' '}
-          <AppText>
-            {item.capacity}
-            {item.unit}
-          </AppText>
-        </AppText>
+        <View style={styles.progressMetaRow}>
+          <AppText tone="muted">
+            <AppText style={styles.progressNumber}>{item.quantity}</AppText>
+            <AppText tone="muted">
+              {' '}
+              / {item.fullQuantity ?? '—'}
+              {item.unit}
+            </AppText>
 
-        <AppText tone="muted">
-          Qty:{' '}
-          <AppText>
-            {item.quantity}
-            {item.unit}
+            <AppText tone="muted">{'  ·  '}</AppText>
+
+            <AppText style={styles.progressNumber}>{Math.round(item.percent)}%</AppText>
           </AppText>
-        </AppText>
+        </View>
       </View>
 
       <AppText tone="muted" style={{ marginTop: theme.space.sm }}>
@@ -243,4 +250,29 @@ const styles = StyleSheet.create({
   },
   badgeIcon: { fontSize: 12, fontWeight: '900' },
   badgeText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.4 },
+  iconBtnText: { fontSize: 16 },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  progressMetaRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressNumber: {
+    fontWeight: '900',
+  },
 });

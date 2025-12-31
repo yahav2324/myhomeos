@@ -1,11 +1,9 @@
 import { z } from 'zod';
 
 export const TelemetrySchema = z.object({
-  boxId: z.string(),
+  deviceId: z.string().min(1),
   quantity: z.number().nonnegative(),
-  percent: z.number().min(0).max(100),
-  state: z.enum(['OK', 'LOW', 'EMPTY']),
-  timestamp: z.string(),
+  timestamp: z.string().datetime().optional(),
 });
 
-export type Telemetry = z.infer<typeof TelemetrySchema>;
+export type TelemetryInput = z.infer<typeof TelemetrySchema>;

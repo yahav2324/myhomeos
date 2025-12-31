@@ -1,7 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { BoxesScreen } from '../features/boxes/screens/BoxesScreen';
-import { SettingsScreen } from '../features/settings/screens/SettingsScreen';
 import { TabsParamList } from './types';
 
 const Tab = createBottomTabNavigator<TabsParamList>();

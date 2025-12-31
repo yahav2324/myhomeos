@@ -1,12 +1,9 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { TelemetryModule } from '../telemetry';
-import { BoxModule } from '../box/box.module';
+import { BoxesModule } from '../boxes/boxes.module';
+import { TelemetryModule } from '../telemetry/telemetry.module';
+import { WsModule } from '../ws/ws.module';
 
 @Module({
-  imports: [TelemetryModule, BoxModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [WsModule, BoxesModule, TelemetryModule],
 })
 export class AppModule {}

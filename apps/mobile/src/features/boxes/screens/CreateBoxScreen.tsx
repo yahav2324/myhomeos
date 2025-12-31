@@ -1,23 +1,56 @@
 import * as React from 'react';
 import { View, TextInput, StyleSheet } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { theme } from '../../../shared/theme/theme';
 import { AppText } from '../../../shared/ui/AppText';
 import { AppButton } from '../../../shared/ui/AppButton';
 import { Card } from '../../../shared/ui/Card';
+import type { RootStackParamList } from '../../../navigation/types';
+import { useCreateBox } from '../hooks/useCreateBox';
+import { setFullLevel } from '../api/boxes.api'; // PATCH /boxes/:id/set-full
+import { postTelemetry } from '../api';
 
-export function CreateBoxScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, 'CreateBox'>;
+
+export function CreateBoxScreen({ navigation, route }: Props) {
+  const { deviceId, currentQuantity, unit, onCreated } = route.params;
+
   const [name, setName] = React.useState('');
-  const [capacity, setCapacity] = React.useState('');
-  const [unit, setUnit] = React.useState<'g' | 'ml'>('g');
+  const [full, setFull] = React.useState(String(currentQuantity));
 
-  const canSubmit = name.trim().length > 0 && Number(capacity) > 0;
+  const { submit, loading, error } = useCreateBox();
+
+  const canSubmit = name.trim().length > 0 && Number(full) > 0;
+
+  const onCreate = async () => {
+    const created = await submit({
+      deviceId,
+      name: name.trim(),
+      unit,
+    });
+
+    await postTelemetry({
+      deviceId,
+      quantity: currentQuantity,
+    });
+
+    await setFullLevel(created.id, Number(full));
+
+    onCreated?.();
+    navigation.popToTop();
+  };
 
   return (
     <View style={styles.container}>
       <Card>
         <AppText style={styles.title}>Create Box</AppText>
         <AppText tone="muted" style={{ marginTop: 4 }}>
-          Define a new storage box to track.
+          Connected to <AppText>{deviceId}</AppText>. Current amount:{' '}
+          <AppText>
+            {currentQuantity}
+            {unit}
+          </AppText>
         </AppText>
 
         <View style={{ marginTop: theme.space.lg, gap: theme.space.md }}>
@@ -32,10 +65,10 @@ export function CreateBoxScreen() {
             />
           </Field>
 
-          <Field label="Capacity">
+          <Field label={`Full level (${unit})`}>
             <TextInput
-              value={capacity}
-              onChangeText={setCapacity}
+              value={full}
+              onChangeText={setFull}
               placeholder="e.g. 1000"
               placeholderTextColor={theme.colors.muted}
               style={styles.input}
@@ -43,28 +76,26 @@ export function CreateBoxScreen() {
             />
           </Field>
 
-          <View style={styles.unitRow}>
-            <AppButton
-              title="g"
-              variant={unit === 'g' ? 'primary' : 'ghost'}
-              onPress={() => setUnit('g')}
-              style={{ flex: 1 }}
-            />
-            <AppButton
-              title="ml"
-              variant={unit === 'ml' ? 'primary' : 'ghost'}
-              onPress={() => setUnit('ml')}
-              style={{ flex: 1 }}
-            />
-          </View>
+          <AppButton
+            title={`Use current (${currentQuantity}${unit})`}
+            variant="ghost"
+            onPress={() => setFull(String(currentQuantity))}
+          />
+
+          {error ? (
+            <AppText tone="danger" style={{ fontWeight: '800' }}>
+              {error}
+            </AppText>
+          ) : null}
 
           <AppButton
-            title="Create"
-            onPress={() => console.log('Create box')}
-            disabled={!canSubmit}
+            title={loading ? 'Creating...' : 'Create'}
+            onPress={onCreate}
+            disabled={!canSubmit || loading}
           />
+
           <AppText tone="muted" style={{ fontSize: 12 }}>
-            (Next step: wire to UseCase + API)
+            (Next: real Bluetooth scan + real live telemetry)
           </AppText>
         </View>
       </Card>
@@ -93,5 +124,4 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: '#0F172A',
   },
-  unitRow: { flexDirection: 'row', gap: theme.space.md },
 });
