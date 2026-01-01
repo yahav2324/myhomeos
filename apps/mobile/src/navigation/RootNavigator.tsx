@@ -6,10 +6,21 @@ import { RootStackParamList } from './types';
 import { SetFullLevelScreen } from '../features/boxes/screens/SetFullLevelScreen';
 import { ConnectBoxScreen } from '../features/boxes/screens/ConnectBoxScreen';
 import { WsProvider } from '../shared/ws/WsProvider';
+import { BoxDetailsScreen } from '../features/boxes/screens/BoxDetailsScreen';
+import { useLangStore } from '../shared/i18n/lang.store';
+import { SettingsScreen } from '../features/settings/screen/SettingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
+  const hydrate = useLangStore((s) => s.hydrate);
+  const hydrated = useLangStore((s) => s.hydrated);
+
+  React.useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  if (!hydrated) return null; // או Splash קטן
   return (
     <WsProvider>
       <Stack.Navigator>
@@ -29,6 +40,7 @@ export function RootNavigator() {
           component={SetFullLevelScreen}
           options={{ title: 'Full level' }}
         />
+        <Stack.Screen name="BoxDetails" component={BoxDetailsScreen} options={{ title: 'Box' }} />
       </Stack.Navigator>
     </WsProvider>
   );

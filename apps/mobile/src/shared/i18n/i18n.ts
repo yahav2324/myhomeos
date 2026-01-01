@@ -1,0 +1,79 @@
+import { I18n } from 'i18n-js';
+
+export type Lang = 'en' | 'he';
+
+export const i18n = new I18n({
+  en: {
+    settings: 'Settings',
+    language: 'Language',
+    english: 'English',
+    hebrew: 'Hebrew',
+    boxes: 'Boxes',
+    history: 'History',
+    recalibrateFull: 'Recalibrate full',
+    deleteBox: 'Delete box',
+    boxesSubtitle: 'Monitor fill levels in real time',
+    create: 'Create',
+    retry: 'Retry',
+    noBoxesTitle: 'No boxes yet',
+    noBoxesSubtitle: 'Create your first smart storage box to start tracking.',
+    createBox: 'Create a box',
+    noUpdatesYet: 'No updates yet',
+    updatedAgo: 'Updated {{when}}',
+    updatedAt: 'Updated at {{when}}',
+    justNow: 'just now',
+    secondsAgo: '{{n}}s ago',
+    minutesAgo: '{{n}}m ago',
+    hoursAgo: '{{n}}h ago',
+    daysAgo: '{{n}}d ago',
+
+    // ConnectBox
+    connectBoxTitle: 'Connect your box',
+    connectBoxSubtitle: 'Turn on the box and keep it nearby. We’ll connect via Bluetooth.',
+    scanMock: 'Scan (mock)',
+    nextRealBleScan: '(Next: real BLE scan)',
+    deviceLabel: 'Device:',
+    currentAmountLabel: 'Current amount:',
+    continue: 'Continue',
+    languageRestartNote: 'Changing language may restart the app to apply RTL.',
+  },
+  he: {
+    settings: 'הגדרות',
+    language: 'שפה',
+    english: 'אנגלית',
+    hebrew: 'עברית',
+    boxes: 'קופסאות',
+    history: 'היסטוריה',
+    recalibrateFull: 'כיול מלא מחדש',
+    deleteBox: 'מחיקת קופסה',
+    boxesSubtitle: 'מעקב אחרי המלאי בזמן אמת',
+    create: 'יצירה',
+    retry: 'נסה שוב',
+    noBoxesTitle: 'אין קופסאות עדיין',
+    noBoxesSubtitle: 'צור קופסה חכמה ראשונה כדי להתחיל לעקוב.',
+    createBox: 'צור קופסה',
+    noUpdatesYet: 'עדיין אין עדכונים',
+    updatedAgo: 'עודכן {{when}}',
+    updatedAt: 'עודכן בשעה {{when}}',
+    justNow: 'זה עתה',
+    secondsAgo: 'לפני {{n}} שנ׳',
+    minutesAgo: 'לפני {{n}} דק׳',
+    hoursAgo: 'לפני {{n}} שע׳',
+    daysAgo: 'לפני {{n}} י׳',
+
+    // ConnectBox
+    connectBoxTitle: 'חיבור קופסה',
+    connectBoxSubtitle: 'הדלק את הקופסה והשאר אותה קרובה. נתחבר דרך Bluetooth.',
+    scanMock: 'סריקה (דמו)',
+    nextRealBleScan: '(בהמשך: סריקת BLE אמיתית)',
+    deviceLabel: 'מכשיר:',
+    currentAmountLabel: 'כמות נוכחית:',
+    continue: 'המשך',
+
+    languageRestartNote: 'שינוי שפה עשוי להפעיל מחדש את האפליקציה כדי להחיל כיווניות.',
+  },
+});
+
+i18n.enableFallback = true;
+
+export const t = (key: string, params?: Record<string, any>) => i18n.t(key, params);

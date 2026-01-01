@@ -15,6 +15,7 @@ export type RootStackParamList = {
     currentFullQuantity?: number;
     onDone?: () => void;
   };
+  BoxDetails: { boxId: string };
 };
 
 export type TabsParamList = {

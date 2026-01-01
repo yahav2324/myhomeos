@@ -22,6 +22,7 @@ export function SetFullLevelScreen({ navigation, route }: Props) {
 
   const canSubmit = Number(fullQuantity) > 0 && confirmed;
   React.useEffect(() => {
+    setConfirmed(false);
     if (route.params.currentFullQuantity != null) {
       setFullQuantity(String(route.params.currentFullQuantity));
     }

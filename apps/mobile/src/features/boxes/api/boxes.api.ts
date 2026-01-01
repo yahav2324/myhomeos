@@ -1,7 +1,7 @@
 import { CreateBoxInput } from '@smart-kitchen/contracts';
 import type { BoxItem } from '../model/types';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.1.173:3000';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.1.173:3000';
 
 export async function fetchBoxes(): Promise<BoxItem[]> {
   const res = await fetch(`${API_URL}/boxes`);

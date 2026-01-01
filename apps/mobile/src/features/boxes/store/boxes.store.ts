@@ -13,6 +13,7 @@ type State = {
 
   // WS
   upsertFromWs: (box: BoxItem) => void;
+  remove: (id: string) => void;
 };
 
 export const useBoxesStore = create<State>((set, get) => ({
@@ -54,5 +55,12 @@ export const useBoxesStore = create<State>((set, get) => ({
     const next = items.slice();
     next[idx] = { ...items[idx], ...box };
     set({ items: next });
+  },
+  remove: (id: string) => {
+    set((state) => {
+      const exists = state.items.some((x) => x.id === id);
+      if (!exists) return state;
+      return { items: state.items.filter((x) => x.id !== id) };
+    });
   },
 }));

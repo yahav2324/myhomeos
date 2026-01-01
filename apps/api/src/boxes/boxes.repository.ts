@@ -5,4 +5,5 @@ export interface BoxesRepository {
   findById(id: string): Box | null;
   findByDeviceId(deviceId: string): Box | null;
   save(box: Box): void;
+  delete(id: string): boolean;
 }

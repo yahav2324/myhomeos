@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, I18nManager } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { theme } from '../../../shared/theme/theme';
@@ -7,11 +7,14 @@ import { Card } from '../../../shared/ui/Card';
 import { AppText } from '../../../shared/ui/AppText';
 import { AppButton } from '../../../shared/ui/AppButton';
 import type { RootStackParamList } from '../../../navigation/types';
+import { t } from '../../../shared/i18n/i18n'; // תעדכן נתיב לפי הפרויקט שלך
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ConnectBox'>;
 
 export function ConnectBoxScreen({ navigation, route }: Props) {
   const onDone = route.params?.onDone;
+
+  const isRTL = I18nManager.isRTL;
 
   // MOCK data (כאילו סרקנו BLE ומצאנו קופסה)
   const [connected, setConnected] = React.useState(false);
@@ -24,34 +27,35 @@ export function ConnectBoxScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <Card>
-        <AppText style={styles.title}>Connect your box</AppText>
-        <AppText tone="muted" style={{ marginTop: 4 }}>
-          Turn on the box and keep it nearby. We’ll connect via Bluetooth.
+        <AppText style={[styles.title, isRTL && styles.textRTL]}>{t('connectBoxTitle')}</AppText>
+
+        <AppText tone="muted" style={[{ marginTop: 4 }, isRTL && styles.textRTL]}>
+          {t('connectBoxSubtitle')}
         </AppText>
 
         <View style={{ marginTop: theme.space.lg, gap: theme.space.md }}>
           {!connected ? (
             <>
-              <AppButton title="Scan (mock)" onPress={() => setConnected(true)} />
-              <AppText tone="muted" style={{ fontSize: 12 }}>
-                (Next: real BLE scan)
+              <AppButton title={t('scanMock')} onPress={() => setConnected(true)} />
+              <AppText tone="muted" style={[{ fontSize: 12 }, isRTL && styles.textRTL]}>
+                {t('nextRealBleScan')}
               </AppText>
             </>
           ) : (
             <>
-              <AppText>
-                Device: <AppText>{deviceId}</AppText>
+              <AppText style={isRTL && styles.textRTL}>
+                {t('deviceLabel')} <AppText>{deviceId}</AppText>
               </AppText>
 
-              <AppText tone="muted">
-                Current amount:{' '}
+              <AppText tone="muted" style={isRTL && styles.textRTL}>
+                {t('currentAmountLabel')}{' '}
                 <AppText>
                   {currentQuantity}
                   {unit}
                 </AppText>
               </AppText>
 
-              <View style={{ flexDirection: 'row', gap: theme.space.md }}>
+              <View style={[styles.row, isRTL && styles.rowRTL]}>
                 <AppButton
                   title="-50"
                   variant="ghost"
@@ -67,7 +71,7 @@ export function ConnectBoxScreen({ navigation, route }: Props) {
               </View>
 
               <AppButton
-                title="Continue"
+                title={t('continue')}
                 onPress={() =>
                   navigation.replace('CreateBox', {
                     deviceId,
@@ -90,4 +94,9 @@ export function ConnectBoxScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg, padding: theme.space.xl },
   title: { fontSize: 20, fontWeight: '900' },
+
+  textRTL: { textAlign: 'right', writingDirection: 'rtl' },
+
+  row: { flexDirection: 'row', gap: theme.space.md },
+  rowRTL: { flexDirection: 'row-reverse' },
 });

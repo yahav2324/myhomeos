@@ -4,12 +4,14 @@ import { BoxSchema, CreateBoxSchema, SetFullSchema, type Box } from '@smart-kitc
 import type { BoxesRepository } from './boxes.repository';
 import { computePercent, computeState, makeCode } from '../share/utils';
 import { BoxesGateway } from '../ws/boxes.gateway';
+import { TelemetryStore } from '../telemetry/telemetry.store';
 
 @Injectable()
 export class BoxesService {
   constructor(
     @Inject('BoxesRepository') private readonly repo: BoxesRepository,
     private readonly gateway: BoxesGateway,
+    private readonly telemetry: TelemetryStore,
   ) {}
 
   list(): Box[] {
@@ -149,9 +151,34 @@ export class BoxesService {
     const validated = BoxSchema.safeParse(updated);
     if (!validated.success) return { ok: false, errors: validated.error.flatten() };
 
+    this.telemetry.append({
+      boxId: validated.data.id,
+      quantity: validated.data.quantity,
+      percent: validated.data.percent,
+      state: validated.data.state,
+      timestamp: validated.data.updatedAt,
+    });
+
     this.repo.save(validated.data);
     this.gateway.upsert(validated.data);
 
     return { ok: true, data: validated.data };
+  }
+
+  deleteBox(id: string): { ok: true } | { ok: false; errors: any } {
+    const existing = this.repo.findById(id);
+    if (!existing) {
+      return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
+    }
+
+    const deleted = this.repo.delete(id);
+    if (!deleted) {
+      return { ok: false, errors: { formErrors: ['Delete failed'], fieldErrors: {} } };
+    }
+
+    this.gateway.delete({ id });
+    this.telemetry.deleteBox(id);
+
+    return { ok: true };
   }
 }

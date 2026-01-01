@@ -24,4 +24,8 @@ export class MemoryBoxesRepository implements BoxesRepository {
   save(box: Box): void {
     this.store.set(box.id, box);
   }
+
+  delete(id: string): boolean {
+    return this.store.delete(id);
+  }
 }

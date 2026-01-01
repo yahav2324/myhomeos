@@ -1,5 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { TelemetryService } from './telemetry.service';
+import { TelemetryStore } from './telemetry.store';
 
 @Controller('telemetry')
 export class TelemetryController {
@@ -8,5 +9,10 @@ export class TelemetryController {
   @Post()
   ingest(@Body() body: unknown) {
     return this.service.ingest(body);
+  }
+
+  @Get('history/:boxId')
+  history(@Param('boxId') boxId: string, @Query('hours') hours?: string) {
+    return this.service.history(boxId, hours);
   }
 }

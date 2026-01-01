@@ -1,8 +1,7 @@
 import * as React from 'react';
-import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, StyleSheet, RefreshControl, Pressable, I18nManager } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Pressable } from 'react-native';
 
 import type { RootStackParamList } from '../../../navigation/types';
 import { theme } from '../../../shared/theme/theme';
@@ -14,8 +13,12 @@ import { BoxProgressBar } from '../../../shared/components/BoxProgressBar';
 import type { BoxItem } from '../model/types';
 import { SkeletonBoxCard } from '../../../shared';
 import { useBoxesStore } from '../store/boxes.store';
+import { t } from '../../../shared/i18n/i18n';
 
 type BoxState = 'OK' | 'LOW' | 'EMPTY';
+
+const isRTL = I18nManager.isRTL;
+const rowDir = isRTL ? 'row-reverse' : 'row';
 
 function badgeBg(state: BoxState) {
   if (state === 'OK') return 'rgba(34,197,94,0.14)';
@@ -43,22 +46,22 @@ function badgeLabel(state: BoxState) {
 
 function timeAgo(iso?: string) {
   if (!iso) return null;
-  const t = new Date(iso);
-  const ms = Date.now() - t.getTime();
+  const t0 = new Date(iso);
+  const ms = Date.now() - t0.getTime();
   if (Number.isNaN(ms)) return null;
 
   const s = Math.floor(ms / 1000);
-  if (s < 10) return 'just now';
-  if (s < 60) return `${s}s ago`;
+  if (s < 10) return { key: 'justNow' as const, value: '' };
+  if (s < 60) return { key: 'secondsAgo' as const, value: String(s) };
 
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return { key: 'minutesAgo' as const, value: String(m) };
 
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return { key: 'hoursAgo' as const, value: String(h) };
 
   const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return { key: 'daysAgo' as const, value: String(d) };
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -79,12 +82,13 @@ export function BoxesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
-          <AppText style={styles.title}>Boxes</AppText>
-          <AppText tone="muted">Monitor fill levels in real time</AppText>
+        <View style={{ flex: 1 }}>
+          <AppText style={styles.title}>{t('boxes')}</AppText>
+          <AppText tone="muted">{t('boxesSubtitle')}</AppText>
         </View>
+
         <AppButton
-          title="Create"
+          title={t('create')}
           onPress={() =>
             navigation.navigate('ConnectBox', {
               onDone: refresh,
@@ -99,7 +103,7 @@ export function BoxesScreen() {
             {err}
           </AppText>
           <AppButton
-            title="Retry"
+            title={t('retry')}
             variant="ghost"
             onPress={refresh}
             style={{ marginTop: theme.space.md }}
@@ -116,13 +120,11 @@ export function BoxesScreen() {
       ) : items.length === 0 ? (
         <View style={{ marginTop: theme.space.xl }}>
           <EmptyState
-            title="No boxes yet"
-            subtitle="Create your first smart storage box to start tracking."
-            actionTitle="Create a box"
+            title={t('noBoxesTitle')}
+            subtitle={t('noBoxesSubtitle')}
+            actionTitle={t('createBox')}
             onAction={() => {
-              navigation.navigate('ConnectBox', {
-                onDone: refresh,
-              });
+              navigation.navigate('ConnectBox', { onDone: refresh });
             }}
           />
         </View>
@@ -132,114 +134,120 @@ export function BoxesScreen() {
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-          renderItem={({ item }) => <BoxCard item={item} />}
+          renderItem={({ item }) => <BoxCard item={item} navigation={navigation} />}
         />
       )}
     </View>
   );
 }
 
-function BoxCard({ item }: { item: BoxItem }) {
-  const ago = timeAgo(item.updatedAt);
+function BoxCard({ item, navigation }: { item: BoxItem; navigation: Nav }) {
+  const agoObj = timeAgo(item.updatedAt);
   const clock = item.updatedAt ? new Date(item.updatedAt).toLocaleTimeString() : null;
   const [, force] = React.useState(0);
-  const navigation = useNavigation<Nav>();
 
   React.useEffect(() => {
     const id = setInterval(() => force((x) => x + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 
+  const updatedText = agoObj
+    ? t('updatedAgo', { when: t(agoObj.key, { n: agoObj.value }) })
+    : clock
+      ? t('updatedAt', { when: clock })
+      : t('noUpdatesYet');
+
   return (
-    <Card>
-      <View style={styles.cardTop}>
-        <View style={{ flex: 1 }}>
-          <AppText style={styles.cardTitle}>{item.name}</AppText>
-          <AppText tone="muted">{item.code}</AppText>
+    <Pressable
+      onPress={() => navigation.navigate('BoxDetails', { boxId: item.id })}
+      style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+    >
+      <Card>
+        <View style={styles.cardTop}>
+          <View style={{ flex: 1 }}>
+            <AppText style={styles.cardTitle}>{item.name}</AppText>
+            <AppText tone="muted">{item.code}</AppText>
+          </View>
+
+          <View style={styles.cardActions}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('SetFullLevel', {
+                  boxId: item.id,
+                  boxName: item.name,
+                  unit: item.unit,
+                  currentFullQuantity: item.fullQuantity ?? 0,
+                  mode: 'recalibrate',
+                })
+              }
+              hitSlop={10}
+              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.75 }]}
+            >
+              <AppText style={styles.iconBtnText}>⚙️</AppText>
+            </Pressable>
+
+            <View style={[styles.badgeBase, { backgroundColor: badgeBg(item.state) }]}>
+              <AppText style={[styles.badgeIcon, { color: badgeFg(item.state) }]}>
+                {badgeIcon(item.state)}
+              </AppText>
+              <AppText style={[styles.badgeText, { color: badgeFg(item.state) }]}>
+                {badgeLabel(item.state)}
+              </AppText>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={() =>
-              navigation.navigate('SetFullLevel', {
-                boxId: item.id,
-                boxName: item.name,
-                unit: item.unit,
-                currentFullQuantity: item.fullQuantity ?? 0,
-                mode: 'recalibrate',
-              } as any)
-            }
-            hitSlop={10}
-            style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.75 }]}
-          >
-            <AppText style={styles.iconBtnText}>⚙️</AppText>
-          </Pressable>
+        <View style={{ marginTop: theme.space.md }}>
+          <BoxProgressBar percent={item.percent} state={item.state} />
 
-          <View style={[styles.badgeBase, { backgroundColor: badgeBg(item.state) }]}>
-            <AppText style={[styles.badgeIcon, { color: badgeFg(item.state) }]}>
-              {badgeIcon(item.state)}
-            </AppText>
-            <AppText style={[styles.badgeText, { color: badgeFg(item.state) }]}>
-              {badgeLabel(item.state)}
+          <View style={styles.progressMetaRow}>
+            <AppText tone="muted">
+              <AppText style={styles.progressNumber}>{item.quantity}</AppText>
+              <AppText tone="muted">
+                {' '}
+                / {item.fullQuantity ?? '—'}
+                {item.unit}
+              </AppText>
+
+              <AppText tone="muted">{isRTL ? ' · ' : '  ·  '}</AppText>
+
+              <AppText style={styles.progressNumber}>{Math.round(item.percent)}%</AppText>
             </AppText>
           </View>
         </View>
-      </View>
 
-      <View style={{ marginTop: theme.space.md }}>
-        <BoxProgressBar percent={item.percent} state={item.state} />
-
-        <View style={styles.progressMetaRow}>
-          <AppText tone="muted">
-            <AppText style={styles.progressNumber}>{item.quantity}</AppText>
-            <AppText tone="muted">
-              {' '}
-              / {item.fullQuantity ?? '—'}
-              {item.unit}
-            </AppText>
-
-            <AppText tone="muted">{'  ·  '}</AppText>
-
-            <AppText style={styles.progressNumber}>{Math.round(item.percent)}%</AppText>
-          </AppText>
-        </View>
-      </View>
-
-      <AppText tone="muted" style={{ marginTop: theme.space.sm }}>
-        {ago ? `Updated ${ago}` : clock ? `Updated at ${clock}` : 'No updates yet'}
-      </AppText>
-    </Card>
+        <AppText tone="muted" style={{ marginTop: theme.space.sm }}>
+          {updatedText}
+        </AppText>
+      </Card>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg, padding: theme.space.xl },
+
   headerRow: {
-    flexDirection: 'row',
+    flexDirection: rowDir,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
+
   title: { fontSize: 28, fontWeight: '900', letterSpacing: 0.2 },
 
   listContent: { paddingTop: theme.space.lg, gap: theme.space.md, paddingBottom: theme.space.xl },
 
   cardTop: {
-    flexDirection: 'row',
+    flexDirection: rowDir,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
   cardTitle: { fontSize: 18, fontWeight: '900' },
 
-  metaRow: {
-    marginTop: theme.space.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: theme.space.md,
-  },
   badgeBase: {
-    flexDirection: 'row',
+    flexDirection: rowDir,
     alignItems: 'center',
     gap: 6,
     paddingVertical: 6,
@@ -250,12 +258,15 @@ const styles = StyleSheet.create({
   },
   badgeIcon: { fontSize: 12, fontWeight: '900' },
   badgeText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.4 },
+
   iconBtnText: { fontSize: 16 },
+
   cardActions: {
-    flexDirection: 'row',
+    flexDirection: rowDir,
     alignItems: 'center',
     gap: 10,
   },
+
   iconBtn: {
     width: 34,
     height: 34,
@@ -266,13 +277,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
+
   progressMetaRow: {
     marginTop: 8,
-    flexDirection: 'row',
+    flexDirection: rowDir,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  progressNumber: {
-    fontWeight: '900',
-  },
+
+  progressNumber: { fontWeight: '900' },
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { BoxesService } from './boxes.service';
 
 @Controller('boxes')
@@ -28,5 +28,10 @@ export class BoxesController {
   @Post(':id/recalibrate-full')
   recalibrateFull(@Param('id') id: string, @Body() body: unknown) {
     return this.service.recalibrateFull(id, body);
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string) {
+    return this.service.deleteBox(id);
   }
 }

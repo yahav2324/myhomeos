@@ -12,4 +12,8 @@ export class BoxesGateway {
 
     this.server.emit('boxUpserted', box);
   }
+
+  delete(payload: { id: string }) {
+    this.server.emit('boxDeleted', payload);
+  }
 }
