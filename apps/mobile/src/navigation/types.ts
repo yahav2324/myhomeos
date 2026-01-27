@@ -16,6 +16,10 @@ export type RootStackParamList = {
     onDone?: () => void;
   };
   BoxDetails: { boxId: string };
+  AuthPhone: undefined;
+  AuthOtp: { challengeId: string };
+  CreateHousehold: undefined;
+  Hub: undefined;
 };
 
 export type TabsParamList = {

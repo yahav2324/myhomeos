@@ -12,14 +12,18 @@ import { useBoxesStore } from '../store/boxes.store';
 import { useTelemetryHistory } from '../hooks/useTelemetryHistory';
 import { API_URL } from '../api';
 import { BoxActionsSheet } from '../../../shared/components/bottomActionsSheet';
+import { useLangStore } from '../../../shared/i18n/lang.store';
+import { authedFetch } from '../../auth/api/auth.api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BoxDetails'>;
 
 export function BoxDetailsScreen({ navigation, route }: Props) {
   const [hours, setHours] = React.useState<24 | 168>(24);
   const [actionsOpen, setActionsOpen] = React.useState(false);
-
+  const lang = useLangStore((s) => s.lang);
   const { boxId } = route.params;
+  const listRef = React.useRef<FlatList>(null);
+  const isAtBottomRef = React.useRef(true);
 
   const box = useBoxesStore((s) => s.items.find((b) => b.id === boxId));
   const {
@@ -32,6 +36,14 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
   React.useEffect(() => {
     if (box?.name) navigation.setOptions({ title: box.name });
   }, [box?.name, navigation]);
+
+  React.useEffect(() => {
+    if (isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      });
+    }
+  }, [history.length]);
 
   if (!box) {
     return (
@@ -59,11 +71,11 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
   const unit = box.unit;
   return (
     <View style={styles.container}>
-      <Card>
+      <Card style={{ flex: 1 }}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <AppText style={styles.title}>{box.name}</AppText>
-            <AppText tone="muted">{box.code}</AppText>
+            <AppText tone="muted">{box.id}</AppText>
             <AppText tone="muted" style={{ marginTop: 4 }}>
               Device: <AppText>{box.deviceId}</AppText>
             </AppText>
@@ -88,7 +100,7 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
           <AppText style={styles.num}>{percent}%</AppText>
         </AppText>
 
-        <View style={{ marginTop: theme.space.lg }}>
+        <View style={{ marginTop: theme.space.lg, flex: 1, minHeight: 0 }}>
           <View style={styles.sectionHeader}>
             <AppText style={styles.sectionTitle}>History</AppText>
 
@@ -125,7 +137,7 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
           </View>
 
           {histErr ? (
-            <Card style={{ marginTop: theme.space.md }}>
+            <Card style={{ marginTop: theme.space.md, flex: 1, minHeight: 0 }}>
               <AppText tone="danger" style={{ fontWeight: '900' }}>
                 {histErr}
               </AppText>
@@ -145,12 +157,24 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
               <AppText tone="muted">No history yet. Send some telemetry to see trends.</AppText>
             </Card>
           ) : (
-            <Card style={{ marginTop: theme.space.md }}>
+            <Card style={{ marginTop: theme.space.md, flex: 1, minHeight: 0 }}>
               <FlatList
-                data={history.slice(0, 40)}
+                style={{ flex: 1 }}
+                ref={listRef}
+                showsVerticalScrollIndicator={false} // במובייל, ובחלק מה-web
+                decelerationRate="fast" // iOS feel
+                data={history.slice(0, 100)}
                 keyExtractor={(x, idx) => `${x.timestamp}-${idx}`}
-                scrollEnabled={false}
                 ItemSeparatorComponent={() => <View style={styles.sep} />}
+                onScroll={(e) => {
+                  const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+                  const paddingToBottom = 20;
+
+                  isAtBottomRef.current =
+                    layoutMeasurement.height + contentOffset.y >=
+                    contentSize.height - paddingToBottom;
+                }}
+                scrollEventThrottle={16}
                 renderItem={({ item }) => (
                   <View style={styles.historyRow}>
                     <View style={{ flex: 1 }}>
@@ -195,7 +219,7 @@ export function BoxDetailsScreen({ navigation, route }: Props) {
             });
           }}
           onDelete={async () => {
-            const res = await fetch(`${API_URL}/boxes/${box.id}`, { method: 'DELETE' });
+            const res = await authedFetch(`/boxes/${box.id}`, { method: 'DELETE' });
             const json = await res.json();
             if (!res.ok || !json?.ok) throw new Error(json?.errors?.formErrors?.[0] ?? 'Failed');
 
@@ -216,6 +240,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: theme.space.md,
+    marginTop: theme.space.lg,
   },
   title: { fontSize: 22, fontWeight: '900' },
   num: { fontWeight: '900' },

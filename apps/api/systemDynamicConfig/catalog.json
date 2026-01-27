@@ -1,0 +1,7 @@
+{
+  "catalog": {
+    "minQueryChars": 2,
+    "upApproveMin": 5,
+    "downRejectMin": 10
+  }
+}

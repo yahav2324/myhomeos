@@ -4,33 +4,49 @@ import { BoxSchema, CreateBoxSchema, SetFullSchema, type Box } from '@smart-kitc
 import type { BoxesRepository } from './boxes.repository';
 import { computePercent, computeState, makeCode } from '../share/utils';
 import { BoxesGateway } from '../ws/boxes.gateway';
-import { TelemetryStore } from '../telemetry/telemetry.store';
 
 @Injectable()
 export class BoxesService {
   constructor(
     @Inject('BoxesRepository') private readonly repo: BoxesRepository,
     private readonly gateway: BoxesGateway,
-    private readonly telemetry: TelemetryStore,
   ) {}
 
-  list(): Box[] {
+  /**
+   * ✅ תמיד לעבוד לפי household.
+   * השארתי את list() רק אם יש לך שימוש פנימי/legacy. מומלץ למחוק בסוף.
+   */
+  async list(): Promise<Box[]> {
     return this.repo.findAll();
   }
 
-  get(id: string): Box | null {
-    return this.repo.findById(id);
+  async findAllForHousehold(householdId: string): Promise<Box[]> {
+    return this.repo.findAllByHouseholdId(householdId);
   }
 
-  create(body: unknown): { ok: true; data: Box } | { ok: false; errors: any } {
+  async findByDeviceId(deviceId: string): Promise<Box | null> {
+    return this.repo.findByDeviceId(deviceId);
+  }
+
+  async getForHousehold(householdId: string, id: string): Promise<Box | null> {
+    return this.repo.findByIdInHousehold(householdId, id);
+  }
+
+  async create(
+    householdId: string,
+    body: unknown,
+  ): Promise<{ ok: true; data: Box } | { ok: false; errors: any }> {
     const parsed = CreateBoxSchema.safeParse(body);
     if (!parsed.success) return { ok: false, errors: parsed.error.flatten() };
 
     const now = new Date().toISOString();
-    const existingCodes = this.repo.findAll().map((b) => b.code);
+
+    // ✅ קודים ייחודיים בתוך הבית
+    const existingCodes = (await this.repo.findAllByHouseholdId(householdId)).map((b) => b.code);
 
     const box: Box = {
       id: randomUUID(),
+      householdId,
       code: makeCode(parsed.data.name, existingCodes),
       deviceId: parsed.data.deviceId,
 
@@ -45,19 +61,38 @@ export class BoxesService {
 
       createdAt: now,
       updatedAt: now,
+      lastReadingAt: undefined,
     };
 
     const validated = BoxSchema.safeParse(box);
     if (!validated.success) return { ok: false, errors: validated.error.flatten() };
 
-    this.repo.save(validated.data);
-    this.gateway.upsert(validated.data);
+    // ✅ deviceId uniqueness בתוך אותו בית (למרות שב-DB הוא unique גלובלי אצלך)
+    const existingByDevice = await this.repo.findByDeviceIdInHousehold(
+      householdId,
+      parsed.data.deviceId,
+    );
+    if (existingByDevice) {
+      return {
+        ok: false,
+        errors: {
+          formErrors: ['Device already paired'],
+          fieldErrors: { deviceId: ['Already exists'] },
+        },
+      };
+    }
 
-    return { ok: true, data: validated.data };
+    const saved = await this.repo.save(validated.data);
+    this.gateway.upsert(saved);
+    return { ok: true, data: saved };
   }
 
-  setFull(id: string, body: unknown): { ok: true; data: Box } | { ok: false; errors: any } {
-    const existing = this.repo.findById(id);
+  async setFullForHousehold(
+    householdId: string,
+    id: string,
+    body: unknown,
+  ): Promise<{ ok: true; data: Box } | { ok: false; errors: any }> {
+    const existing = await this.repo.findByIdInHousehold(householdId, id);
     if (!existing) {
       return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
     }
@@ -87,14 +122,17 @@ export class BoxesService {
     const validated = BoxSchema.safeParse(updated);
     if (!validated.success) return { ok: false, errors: validated.error.flatten() };
 
-    this.repo.save(validated.data);
-    this.gateway.upsert(validated.data);
-
-    return { ok: true, data: validated.data };
+    const saved = await this.repo.save(validated.data);
+    this.gateway.upsert(saved);
+    return { ok: true, data: saved };
   }
 
-  recalibrateFull(id: string, body: unknown): { ok: true; data: Box } | { ok: false; errors: any } {
-    const existing = this.repo.findById(id);
+  async recalibrateFullForHousehold(
+    householdId: string,
+    id: string,
+    body: unknown,
+  ): Promise<{ ok: true; data: Box } | { ok: false; errors: any }> {
+    const existing = await this.repo.findByIdInHousehold(householdId, id);
     if (!existing) {
       return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
     }
@@ -103,7 +141,6 @@ export class BoxesService {
     if (!parsed.success) return { ok: false, errors: parsed.error.flatten() };
 
     const now = new Date().toISOString();
-
     const percent = computePercent(existing.quantity, parsed.data.fullQuantity);
     const state = computeState(percent);
 
@@ -118,15 +155,21 @@ export class BoxesService {
     const validated = BoxSchema.safeParse(updated);
     if (!validated.success) return { ok: false, errors: validated.error.flatten() };
 
-    this.repo.save(validated.data);
-    this.gateway.upsert(validated.data);
-
-    return { ok: true, data: validated.data };
+    const saved = await this.repo.save(validated.data);
+    this.gateway.upsert(saved);
+    return { ok: true, data: saved };
   }
 
-  // נקודת כניסה לעדכון מה-Hub/WebSocket
-  applyTelemetryByDeviceId(input: { deviceId: string; quantity: number; timestamp?: string }) {
-    const existing = this.repo.findByDeviceId(input.deviceId);
+  /**
+   * נקודת כניסה לעדכון מה-Hub לפי deviceId.
+   * אצלך deviceId הוא UNIQUE גלובלי, לכן זה עדיין תקין.
+   */
+  async applyTelemetryByDeviceId(input: {
+    deviceId: string;
+    quantity: number;
+    timestamp?: string;
+  }): Promise<{ ok: true; data: Box } | { ok: false; errors: any }> {
+    const existing = await this.repo.findByDeviceId(input.deviceId);
     if (!existing) {
       return {
         ok: false,
@@ -145,40 +188,48 @@ export class BoxesService {
       quantity: input.quantity,
       percent,
       state,
-      updatedAt: ts,
+      lastReadingAt: ts,
+      updatedAt: existing.updatedAt, // DB-truth נשמר מה-upsert return
     };
 
     const validated = BoxSchema.safeParse(updated);
     if (!validated.success) return { ok: false, errors: validated.error.flatten() };
 
-    this.telemetry.append({
-      boxId: validated.data.id,
-      quantity: validated.data.quantity,
-      percent: validated.data.percent,
-      state: validated.data.state,
-      timestamp: validated.data.updatedAt,
-    });
-
-    this.repo.save(validated.data);
-    this.gateway.upsert(validated.data);
-
-    return { ok: true, data: validated.data };
+    const saved = await this.repo.save(validated.data);
+    this.gateway.upsert(saved);
+    return { ok: true, data: saved };
   }
 
-  deleteBox(id: string): { ok: true } | { ok: false; errors: any } {
-    const existing = this.repo.findById(id);
+  async deleteBoxForHousehold(
+    householdId: string,
+    id: string,
+  ): Promise<{ ok: true } | { ok: false; errors: any }> {
+    const existing = await this.repo.findByIdInHousehold(householdId, id);
     if (!existing) {
       return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
     }
 
-    const deleted = this.repo.delete(id);
+    const deleted = await this.repo.deleteInHousehold(householdId, id);
     if (!deleted) {
       return { ok: false, errors: { formErrors: ['Delete failed'], fieldErrors: {} } };
     }
 
     this.gateway.delete({ id });
-    this.telemetry.deleteBox(id);
-
     return { ok: true };
+  }
+
+  async identifyBox(householdId: string, id: string): Promise<void | { ok: false; errors: any }> {
+    const box = await this.repo.findByIdInHousehold(householdId, id);
+    if (!box) return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
+
+    return this.gateway.emitIdentifyBox(id);
+  }
+
+  async setFullByCodeForHousehold(householdId: string, code: string, body: unknown) {
+    const existing = await this.repo.findByCodeInHousehold(householdId, code);
+    if (!existing) {
+      return { ok: false, errors: { formErrors: ['Box not found'], fieldErrors: {} } };
+    }
+    return this.setFullForHousehold(householdId, existing.id, body);
   }
 }

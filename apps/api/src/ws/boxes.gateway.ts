@@ -16,4 +16,8 @@ export class BoxesGateway {
   delete(payload: { id: string }) {
     this.server.emit('boxDeleted', payload);
   }
+
+  emitIdentifyBox(boxId: string) {
+    this.server.emit('identifyBox', { boxId });
+  }
 }

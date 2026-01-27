@@ -13,4 +13,5 @@ export type BoxItem = {
   state: BoxState;
   createdAt: string;
   updatedAt: string;
+  lastReadingAt?: string;
 };

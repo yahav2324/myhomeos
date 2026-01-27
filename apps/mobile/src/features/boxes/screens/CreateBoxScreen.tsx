@@ -17,11 +17,11 @@ export function CreateBoxScreen({ navigation, route }: Props) {
   const { deviceId, currentQuantity, unit, onCreated } = route.params;
 
   const [name, setName] = React.useState('');
-  const [full, setFull] = React.useState(String(currentQuantity));
+  const [fullQuantity, setFullQuantity] = React.useState(String(currentQuantity));
 
   const { submit, loading, error } = useCreateBox();
 
-  const canSubmit = name.trim().length > 0 && Number(full) > 0;
+  const canSubmit = name.trim().length > 0 && Number(fullQuantity) > 0;
 
   const onCreate = async () => {
     const created = await submit({
@@ -30,12 +30,12 @@ export function CreateBoxScreen({ navigation, route }: Props) {
       unit,
     });
 
-    await postTelemetry({
-      deviceId,
-      quantity: currentQuantity,
-    });
+    // await postTelemetry({
+    //   deviceId,
+    //   quantity: currentQuantity,
+    // });
 
-    await setFullLevel(created.id, Number(full));
+    await setFullLevel(created.id, Number(fullQuantity));
 
     onCreated?.();
     navigation.popToTop();
@@ -67,8 +67,8 @@ export function CreateBoxScreen({ navigation, route }: Props) {
 
           <Field label={`Full level (${unit})`}>
             <TextInput
-              value={full}
-              onChangeText={setFull}
+              value={fullQuantity}
+              onChangeText={setFullQuantity}
               placeholder="e.g. 1000"
               placeholderTextColor={theme.colors.muted}
               style={styles.input}
@@ -79,7 +79,7 @@ export function CreateBoxScreen({ navigation, route }: Props) {
           <AppButton
             title={`Use current (${currentQuantity}${unit})`}
             variant="ghost"
-            onPress={() => setFull(String(currentQuantity))}
+            onPress={() => setFullQuantity(String(currentQuantity))}
           />
 
           {error ? (

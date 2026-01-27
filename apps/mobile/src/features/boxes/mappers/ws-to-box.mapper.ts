@@ -14,5 +14,6 @@ export function mapWsToBox(payload: BoxUpsertedPayload): BoxItem {
     fullQuantity: payload.fullQuantity,
     createdAt: payload.createdAt,
     updatedAt: payload.updatedAt,
+    lastReadingAt: payload.lastReadingAt,
   };
 }

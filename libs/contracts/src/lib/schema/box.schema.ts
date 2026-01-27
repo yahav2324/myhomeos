@@ -24,7 +24,9 @@ export const BoxSchema = z.object({
   deviceId: z.string().min(1),
 
   createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime(),
+  lastReadingAt: z.string().datetime().optional(),
+  householdId: z.string().uuid(),
 });
 
 export type Box = z.infer<typeof BoxSchema>;

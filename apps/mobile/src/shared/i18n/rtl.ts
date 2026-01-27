@@ -21,13 +21,17 @@ export async function applyRtlIfNeeded(lang: Lang) {
       await Updates.reloadAsync();
       return;
     }
-  } catch {}
+  } catch {
+    // לא קריטי אם זה לא עבד
+  }
 
   // 2) ב-dev לפעמים עובד
   try {
     DevSettings.reload();
     return;
-  } catch {}
+  } catch {
+    // לא קריטי אם זה לא עבד
+  }
 
   // 3) הכי אמין באנדרואיד: לסגור, והמשתמש יפתח שוב
   if (Platform.OS === 'android') {

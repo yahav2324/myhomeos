@@ -13,6 +13,7 @@ export type BoxUpsertedPayload = {
   deviceId: string;
   createdAt: string;
   updatedAt: string;
+  lastReadingAt?: string;
 };
 
 type BoxDeletedPayload = { id: string };

@@ -8,6 +8,7 @@ const KEY = 'app.lang';
 type LangState = {
   lang: Lang;
   hydrated: boolean;
+  version: number;
   hydrate: () => Promise<void>;
   setLang: (lang: Lang) => Promise<void>;
 };
@@ -15,20 +16,19 @@ type LangState = {
 export const useLangStore = create<LangState>((set, get) => ({
   lang: 'en',
   hydrated: false,
-
+  version: 0,
   hydrate: async () => {
     const saved = (await AsyncStorage.getItem(KEY)) as Lang | null;
     const lang: Lang = saved === 'he' ? 'he' : 'en';
     i18n.locale = lang;
-    set({ lang, hydrated: true });
+    set({ lang, hydrated: true, version: get().version + 1 });
   },
 
   setLang: async (lang) => {
     await AsyncStorage.setItem(KEY, lang);
     i18n.locale = lang;
-    set({ lang });
+    set((s) => ({ lang, version: s.version + 1 }));
 
-    // אם צריך להפוך RTL/LTR – יקרה כאן reload
     await applyRtlIfNeeded(lang);
   },
 }));

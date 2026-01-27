@@ -12,22 +12,34 @@ export function SettingsScreen() {
   const lang = useLangStore((s) => s.lang);
   const setLang = useLangStore((s) => s.setLang);
 
-  const isRTL = I18nManager.isRTL;
-
   return (
     <View style={styles.container}>
       <Card>
-        <AppText style={[styles.title, rtl.text]}>{t('settings')}</AppText>
+        <AppText style={[styles.title, lang === 'he' ? styles.textRTL : styles.textLTR]}>
+          {t('settings')}
+        </AppText>
 
         <View style={{ marginTop: theme.space.lg }}>
-          <AppText style={[styles.section, rtl.text]}>{t('language')}</AppText>
+          <AppText
+            style={[
+              styles.section,
+              rtl.text,
+              styles.title,
+              lang === 'he' ? styles.textRTL : styles.textLTR,
+            ]}
+          >
+            {t('language')}
+          </AppText>
 
-          <View style={[styles.row, rtl.row]}>
+          <View style={[styles.row, lang === 'he' ? styles.rowRTL : styles.rowLTR]}>
             <LangPill label={t('english')} active={lang === 'en'} onPress={() => setLang('en')} />
             <LangPill label={t('hebrew')} active={lang === 'he'} onPress={() => setLang('he')} />
           </View>
 
-          <AppText tone="muted" style={[styles.note, rtl.text]}>
+          <AppText
+            tone="muted"
+            style={[styles.note, rtl.text, lang === 'he' ? styles.textRTL : styles.textLTR]}
+          >
             {t('languageRestartNote')}
           </AppText>
         </View>
@@ -80,9 +92,12 @@ const styles = StyleSheet.create({
   },
 
   row: { flexDirection: 'row', gap: 10, marginTop: theme.space.md },
-  rowRTL: { flexDirection: 'row-reverse' },
 
   note: { marginTop: 10, fontSize: 12 },
   // אם תציג אנגלית כשRTL פעיל, תכריח LTR כדי לא לקבל נקודה/סדר מוזר
   noteRTL: { writingDirection: 'ltr', textAlign: 'right' },
+  textRTL: { writingDirection: 'rtl', textAlign: 'right' },
+  textLTR: { writingDirection: 'ltr', textAlign: 'left' },
+  rowRTL: { flexDirection: 'row-reverse' },
+  rowLTR: { flexDirection: 'row' },
 });

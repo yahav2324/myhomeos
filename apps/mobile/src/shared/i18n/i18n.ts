@@ -47,7 +47,7 @@ export const i18n = new I18n({
     recalibrateFull: 'כיול מלא מחדש',
     deleteBox: 'מחיקת קופסה',
     boxesSubtitle: 'מעקב אחרי המלאי בזמן אמת',
-    create: 'יצירה',
+    create: 'צור קופסה חדשה',
     retry: 'נסה שוב',
     noBoxesTitle: 'אין קופסאות עדיין',
     noBoxesSubtitle: 'צור קופסה חכמה ראשונה כדי להתחיל לעקוב.',

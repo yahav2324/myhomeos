@@ -34,3 +34,26 @@ export function computePercent(quantity: number, fullQuantity?: number) {
   const p = Math.round((quantity / fullQuantity) * 100);
   return Math.max(0, Math.min(100, p));
 }
+
+export function toContract(row: any): Box {
+  return {
+    id: row.id,
+    code: row.code,
+    deviceId: row.deviceId,
+
+    householdId: row.householdId,
+    name: row.name,
+    unit: row.unit,
+    capacity: row.capacity ?? undefined,
+
+    fullQuantity: row.fullQuantity ?? undefined,
+    quantity: row.quantity,
+    percent: row.percent,
+    state: row.state,
+
+    // 👇 ההבדל הקריטי
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    lastReadingAt: row.lastReadingAt ? row.lastReadingAt.toISOString() : undefined,
+  };
+}

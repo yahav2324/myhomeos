@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { API_URL } from '../api';
+import { authedFetch } from '../../auth/api/auth.api';
 
 type TelemetryPoint = {
   boxId: string;
@@ -19,7 +20,7 @@ export function useTelemetryHistory(boxId: string, hours: number) {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`${API_URL}/telemetry/history/${boxId}?hours=${hours}`);
+      const res = await authedFetch(`/telemetry/history/${boxId}?hours=${hours}`);
       const json = await res.json();
 
       if (!res.ok || !json?.ok) {
