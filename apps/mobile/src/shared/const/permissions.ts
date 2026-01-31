@@ -1,11 +1,18 @@
 import { Platform } from 'react-native';
-import { PERMISSIONS, RESULTS, requestMultiple } from 'react-native-permissions';
 
-export async function ensureBlePermissions(): Promise<{ ok: boolean; details?: any }> {
+type EnsureRes = { ok: boolean; details?: any };
+
+export async function ensureBlePermissions(): Promise<EnsureRes> {
+  if (Platform.OS === 'web') {
+    // Web: אין את react-native-permissions. Web Bluetooth מבקש הרשאות דרך הדפדפן.
+    return { ok: true, details: { platform: 'web' } };
+  }
+
   if (Platform.OS === 'ios') {
-    // iOS: אין runtime permissions כמו Android, אבל צריך להגדיר usage strings ב-Info.plist
     return { ok: true };
   }
+
+  const { PERMISSIONS, RESULTS, requestMultiple } = require('react-native-permissions');
 
   const perms =
     Number(Platform.Version) >= 31
@@ -17,7 +24,7 @@ export async function ensureBlePermissions(): Promise<{ ok: boolean; details?: a
       : [PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION];
 
   const res = await requestMultiple(perms);
+  const ok = Object.values(res).every((v: any) => v === RESULTS.GRANTED);
 
-  const ok = Object.values(res).every((v) => v === RESULTS.GRANTED);
   return { ok, details: res };
 }

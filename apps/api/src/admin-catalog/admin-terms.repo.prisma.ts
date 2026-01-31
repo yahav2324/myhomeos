@@ -6,25 +6,18 @@ import { TermStatus, VoteValue } from '@prisma/client';
 export class AdminTermsRepoPrisma {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listTerms(args: {
+  async list(args: {
     status: TermStatus;
     lang: string;
     q?: string;
     limit: number;
     cursor?: string;
   }) {
-    const where: any = {
-      status: args.status,
-      scope: 'GLOBAL',
-    };
+    const where: any = { status: args.status, scope: 'GLOBAL' };
 
-    // חיפוש לפי טקסט בשפה
-    if (args.q && args.q.trim().length > 0) {
+    if (args.q?.trim()) {
       where.translations = {
-        some: {
-          lang: args.lang,
-          normalized: { contains: args.q.trim().toLowerCase() },
-        },
+        some: { lang: args.lang, normalized: { contains: args.q.trim().toLowerCase() } },
       };
     }
 
@@ -32,10 +25,7 @@ export class AdminTermsRepoPrisma {
       where,
       take: args.limit,
       ...(args.cursor ? { skip: 1, cursor: { id: args.cursor } } : {}),
-      include: {
-        translations: true,
-        _count: { select: { votes: true } },
-      },
+      include: { translations: true },
       orderBy: { updatedAt: 'desc' },
     });
 
@@ -59,6 +49,10 @@ export class AdminTermsRepoPrisma {
     return { up, down };
   }
 
+  async getTerm(termId: string) {
+    return this.prisma.term.findUnique({ where: { id: termId }, include: { translations: true } });
+  }
+
   async approve(termId: string) {
     return this.prisma.term.update({
       where: { id: termId },
@@ -74,7 +68,6 @@ export class AdminTermsRepoPrisma {
   }
 
   async remove(termId: string) {
-    // מוחק term + translations + votes (cascade)
     return this.prisma.term.delete({ where: { id: termId } });
   }
 }

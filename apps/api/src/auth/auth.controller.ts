@@ -3,7 +3,7 @@ import { OtpRequestSchema, OtpVerifySchema } from '@smart-kitchen/contracts';
 import { parseOrThrow } from '../common/zod';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
-import { CurrentUserId } from './current-user.decorator';
+import { CurrentHouseholdId } from './current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -34,13 +34,13 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout-all')
-  async logoutAll(@CurrentUserId() userId: string) {
+  async logoutAll(@CurrentHouseholdId() userId: string) {
     return this.auth.logoutAll(userId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  async me(@CurrentUserId() userId: string) {
+  async me(@CurrentHouseholdId() userId: string) {
     return { userId };
   }
 }

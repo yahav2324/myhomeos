@@ -4,7 +4,8 @@ import { otpVerify } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
 
 export function AuthOtpScreen({ route, navigation }: any) {
-  const { challengeId } = route.params;
+  const challengeId = route.params?.challengeId as string | undefined;
+
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -12,18 +13,27 @@ export function AuthOtpScreen({ route, navigation }: any) {
 
   const onVerify = async () => {
     setErr(null);
+
+    const trimmed = code.trim();
+    if (!challengeId) {
+      setErr('אין בקשת קוד פעילה. חזור למסך הטלפון ושלח קוד מחדש.');
+      return;
+    }
+    if (trimmed.length !== 6) return;
+
     setLoading(true);
     try {
-      const res = await otpVerify(challengeId, code.trim());
+      const res = await otpVerify(challengeId, trimmed);
       await setSession(res.accessToken, res.refreshToken, Boolean(res.needsOnboarding));
 
       if (res.needsOnboarding) {
         navigation.reset({ index: 0, routes: [{ name: 'CreateHousehold' }] });
       } else {
-        navigation.reset({ index: 0, routes: [{ name: 'App' }] });
+        // ✅ זה המסך של האפליקציה אצלך
+        navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
       }
     } catch (e: any) {
-      setErr(e.message ?? 'Failed');
+      setErr(e?.message ?? 'Failed');
     } finally {
       setLoading(false);
     }
@@ -32,6 +42,7 @@ export function AuthOtpScreen({ route, navigation }: any) {
   return (
     <View style={{ padding: 16, gap: 12 }}>
       <Text style={{ fontSize: 20, fontWeight: '600' }}>הכנס קוד</Text>
+
       <TextInput
         value={code}
         onChangeText={setCode}

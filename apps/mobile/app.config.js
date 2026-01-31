@@ -4,6 +4,16 @@ const asset = (p) => path.join(__dirname, p);
 
 module.exports = {
   expo: {
+    extra: {
+      eas: {
+        projectId: 'dc9c102a-3a7c-4441-b102-d20655247ff0',
+      },
+    },
+    splash: {
+      image: './assets/splash.png',
+      resizeMode: 'contain',
+      backgroundColor: '#070A12',
+    },
     name: 'Mobile',
     slug: 'mobile',
     version: '1.0.0',

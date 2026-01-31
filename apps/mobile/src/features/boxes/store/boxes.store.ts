@@ -45,6 +45,7 @@ export const useBoxesStore = create<State>((set, get) => ({
   upsertFromWs: (box) => {
     // חשוב: ליצור מערך חדש + אובייקט חדש כדי לכפות רנדר
     const items = get().items;
+
     const idx = items.findIndex((x) => x.id === box.id);
 
     if (idx === -1) {

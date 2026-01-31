@@ -17,7 +17,6 @@ enum Unit {
   ml
 }
 
-
 enum OtpPurpose {
   LOGIN
 }
@@ -40,6 +39,14 @@ enum HouseholdRole {
   MEMBER
 }
 
+enum ShoppingUnit {
+  PCS  // יח'
+  G
+  KG
+  ML
+  L
+}
+
 enum MemberStatus {
   ACTIVE
   INVITED
@@ -47,35 +54,35 @@ enum MemberStatus {
 }
 
 model Box {
-  id            String          @id @db.Uuid
-  code          String          @unique
-  deviceId      String          @unique
+  id       String @id @db.Uuid
+  code     String @unique
+  deviceId String @unique
 
-  name          String
-  unit          Unit
-  capacity      Float?
+  name     String
+  unit     Unit
+  capacity Float?
 
-  fullQuantity  Float?
-  quantity      Float           @default(0)
-  percent       Float           @default(0)
-  state         BoxState        @default(EMPTY)
+  fullQuantity Float?
+  quantity     Float    @default(0)
+  percent      Float    @default(0)
+  state        BoxState @default(EMPTY)
 
   lastReadingAt DateTime?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  telemetry     TelemetryEvent[]
+  telemetry TelemetryEvent[]
 
-householdId String
-household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 }
 
 model TelemetryEvent {
-  id        String   @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
-  boxId     String   @db.Uuid
-  box       Box      @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  boxId String @db.Uuid
+  box   Box    @relation(fields: [boxId], references: [id], onDelete: Cascade)
 
   quantity  Float
   percent   Float
@@ -88,17 +95,22 @@ model TelemetryEvent {
 }
 
 model User {
-  id                String   @id @default(uuid())
-  phoneE164          String   @unique
-  displayName        String?
-  avatarUrl          String?
-  activeHouseholdId  String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  lastLoginAt        DateTime?
+  id                String    @id @default(uuid())
+  phoneE164         String    @unique
+  displayName       String?
+  avatarUrl         String?
+  activeHouseholdId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+  isAdmin           Boolean   @default(false)
 
-  sessions           AuthSession[]
-  memberships        HouseholdMember[]
+  sessions    AuthSession[]
+  memberships HouseholdMember[]
+
+  // ✅ NEW: trust flags for Terms moderation
+  trust UserTrust?
+  shoppingDefaults Json?
 
   @@index([activeHouseholdId])
 }
@@ -120,12 +132,12 @@ model OtpChallenge {
 }
 
 model AuthSession {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   userId           String
   refreshTokenHash String
   deviceName       String?
-  createdAt        DateTime @default(now())
-  lastUsedAt       DateTime @default(now())
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
   revokedAt        DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -138,12 +150,17 @@ model Household {
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  boxes Box[]
+
+  boxes   Box[]
   members HouseholdMember[]
+
+  // ✅ NEW: shopping lists
+  shoppingLists    ShoppingList[]
+  shoppingSettings ShoppingSettings?
 }
 
 model HouseholdMember {
-  id          String       @id @default(uuid())
+  id          String        @id @default(uuid())
   householdId String
   userId      String
   role        HouseholdRole @default(MEMBER)
@@ -158,16 +175,26 @@ model HouseholdMember {
   @@index([userId])
 }
 
-
 model SystemConfig {
-  id              String   @id @default(uuid())
-  key             String   @unique  // לדוגמה "catalog"
-  json            Json
-  updatedAt       DateTime @updatedAt
-  createdAt       DateTime @default(now())
+  id        String   @id @default(uuid())
+  key       String   @unique // לדוגמה "catalog"
+  json      Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
+/**
+ * =========================
+ * TERMS (Autocomplete)
+ * =========================
+ * שינוי מרכזי:
+ * - הוספנו LIVE כדי ש-Term חדש יופיע לכולם כדי לדרג.
+ * - אם נדחה => עובר ל-RejectedTerm ונמחק מהגלובלי.
+ * - PENDING נשאר למקרים של resubmit / משתמש חשוד (בשרת נחליט).
+ */
+
 enum TermStatus {
+  LIVE
   PENDING
   APPROVED
   REJECTED
@@ -184,34 +211,36 @@ enum VoteValue {
 }
 
 model Term {
-  id              String     @id @default(uuid())
-  scope           TermScope  @default(GLOBAL)
-  ownerUserId     String?    // אם PRIVATE
-  status          TermStatus @default(PENDING)
-  approvedByAdmin Boolean    @default(false)
+  id          String     @id @default(uuid())
+  scope       TermScope  @default(GLOBAL)
+  ownerUserId String? // אם PRIVATE
+  status      TermStatus @default(LIVE)
+
+  // legacy flags (השארתי כדי לא לשבור קוד קיים)
+  approvedByAdmin Boolean   @default(false)
   approvedAt      DateTime?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  translations    TermTranslation[]
-  votes           TermVote[]
+  translations TermTranslation[]
+  votes        TermVote[]
 
   @@index([status])
   @@index([scope, ownerUserId])
 }
 
 model TermTranslation {
-  id         String   @id @default(uuid())
+  id         String @id @default(uuid())
   termId     String
-  lang       String   // "he" | "en" ...
+  lang       String // "he" | "en" ...
   text       String
-  normalized String   // lower/trim
-  source     String   // "USER" | "AUTO" | "ADMIN"
+  normalized String // lower/trim
+  source     String // "USER" | "AUTO" | "ADMIN"
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  term       Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
+  term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
 
   @@unique([termId, lang])
   @@index([lang, normalized])
@@ -225,9 +254,151 @@ model TermVote {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  term      Term      @relation(fields: [termId], references: [id], onDelete: Cascade)
+  term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
 
   @@unique([termId, userId])
   @@index([termId])
   @@index([userId])
+}
+
+/**
+ * ✅ NEW: Rejected terms table (לא בגלובלי)
+ * נשמר לצורכי:
+ * - ממשק ניהול (לראות הכל + סיבה)
+ * - להציג ליוצר הודעת "לא אושר" + הערת אדמין (אם יש)
+ * שומרים snapshot כדי שלא תלוי במבנה של Term בעתיד.
+ */
+model RejectedTerm {
+  id String @id @default(uuid())
+
+  // מי יצר
+  createdByUserId   String
+  // מי דחה (אופציונלי)
+  rejectedByAdminId String?
+  // הערה שמוצגת למשתמש רק אם קיימת
+  rejectReason      String?
+
+  // snapshot of the "term" at rejection time:
+  // { term: {...}, translations: [...], votes: [...], counts: {...} }
+  snapshot Json
+
+  rejectedAt DateTime @default(now())
+
+  @@index([createdByUserId, rejectedAt])
+}
+
+/**
+ * ✅ NEW: Trust flags for users (חשוד/לא חשוד)
+ * אם termsRequireApproval=true => בשרת תיצור Term חדש כ-PENDING במקום LIVE.
+ * אדמין יכול להחזיר ל-false.
+ */
+model UserTrust {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  termsRequireApproval Boolean @default(false)
+  trustScore           Int     @default(100)
+
+  flaggedAt  DateTime?
+  flagReason String?
+
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * =========================
+ * SHOPPING LISTS
+ * =========================
+ * - Household-based
+ * - settings global + override per list
+ * - items with extra Json to add fields later בלי לשבור UI
+ */
+
+model ShoppingList {
+  id          String    @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  name String
+
+  // settings override per list (filters/sort/group etc)
+  settingsOverride Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ShoppingItem[]
+
+  @@index([householdId, updatedAt])
+}
+
+
+enum ShoppingCategory {
+  VEGETABLES
+  FRUITS
+  DAIRY
+  MEAT_FISH
+  BAKERY
+  PANTRY
+  FROZEN
+  DRINKS
+  SNACKS
+  CLEANING
+  BABY
+  PHARM
+  OTHER
+}
+
+model ShoppingItem {
+  id String @id @default(uuid())
+
+  listId String
+  list   ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  // ✅ מקור מהמילון (אופציונלי)
+  termId String? @db.Uuid
+
+  text           String
+  normalizedText String?
+  dedupeKey      String // ✅ חדש
+
+  qty     Float
+  unit    ShoppingUnit
+  checked Boolean @default(false)
+
+  category  ShoppingCategory?
+  extra Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([listId, dedupeKey])     // ✅ מונע כפילויות תמיד
+  @@index([listId, checked])
+  @@index([listId, updatedAt])
+  @@index([termId])
+}
+
+
+model ShoppingSettings {
+  id          String    @id @default(uuid())
+  householdId String    @unique
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  // default view settings for all lists
+  defaultView Json
+
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  action    String // "CONFIG_PATCH" | "TERM_APPROVE" | "TERM_REJECT" וכו'
+  targetId  String? // termId וכו'
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
 }

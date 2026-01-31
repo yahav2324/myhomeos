@@ -59,3 +59,5 @@ npm-debug.*
 web-build/
 cache/
 
+
+vite.config.*.timestamp*

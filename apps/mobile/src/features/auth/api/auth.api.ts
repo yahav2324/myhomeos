@@ -1,7 +1,14 @@
 import { emitAuthRequired } from '../auth.events';
 import { getTokens, saveTokens, clearTokens } from '../auth.tokens';
 
-const API_BASE = process.env.API_BASE_URL ?? 'http://192.168.1.173:3000/api';
+const API_BASE = process.env.API_BASE_URL ?? 'https://api.myhomeos.app/api';
+
+export async function googleLogin(idToken: string, deviceName?: string) {
+  return fetchJson('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ idToken, deviceName }),
+  });
+}
 
 async function fetchJson(path: string, init?: RequestInit) {
   const mergedHeaders = {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { I18nManager } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 
 import { BoxesScreen } from '../features/boxes/screens/BoxesScreen';
 import { SettingsScreen } from '../features/settings/screen/SettingsScreen';
@@ -8,6 +9,7 @@ import { TabsParamList } from './types';
 import { t } from '../shared/i18n/i18n';
 import { theme } from '../shared/theme/theme';
 import { AppText } from '../shared/ui/AppText';
+import { ShoppingStack } from '../features/shopping/navigation/shopping.stack';
 
 const Tab = createBottomTabNavigator<TabsParamList>();
 
@@ -45,6 +47,16 @@ export function TabsNavigator() {
           title: t('boxes'),
           tabBarIcon: ({ color }) => (
             <AppText style={{ color, fontSize: 16, fontWeight: '900' }}>▦</AppText>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="ShoppingTab"
+        component={ShoppingStack}
+        options={{
+          title: 'רשימות',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cart-outline" size={size} color={color} />
           ),
         }}
       />

@@ -20,9 +20,12 @@ export type RootStackParamList = {
   AuthOtp: { challengeId: string };
   CreateHousehold: undefined;
   Hub: undefined;
+  AuthGoogle: undefined;
+  Splash: { next: 'AuthGoogle' | 'CreateHousehold' | 'Tabs' };
 };
 
 export type TabsParamList = {
   Boxes: undefined;
+  ShoppingTab: undefined;
   Settings: undefined;
 };

@@ -16,6 +16,7 @@ import { useBoxesStore } from '../store/boxes.store';
 import { t } from '../../../shared/i18n/i18n';
 import { useLangStore } from '../../../shared/i18n/lang.store';
 import { Ionicons } from '@expo/vector-icons';
+import { useBoxesSocket } from '../ws/useBoxesSocket';
 
 type BoxState = 'OK' | 'LOW' | 'EMPTY';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -66,7 +67,6 @@ function timeAgo(iso?: string) {
 
 export function BoxesScreen() {
   const navigation = useNavigation<Nav>();
-  const isRTL = I18nManager.isRTL;
   const lang = useLangStore((s) => s.lang);
 
   const items = useBoxesStore((s) => s.items);
@@ -75,6 +75,18 @@ export function BoxesScreen() {
   const err = useBoxesStore((s) => s.err);
   const load = useBoxesStore((s) => s.load);
   const refresh = useBoxesStore((s) => s.refresh);
+  const upsertFromWs = useBoxesStore((s) => s.upsertFromWs);
+  const remove = useBoxesStore((s) => s.remove);
+
+  useBoxesSocket({
+    onUpsert: (b) => {
+      console.log('[BoxesScreen] boxUpserted -> upsertFromWs', b.id, b.quantity, b.percent);
+      upsertFromWs(b);
+    },
+    onDelete: (id) => {
+      remove(id);
+    },
+  });
 
   React.useEffect(() => {
     load();

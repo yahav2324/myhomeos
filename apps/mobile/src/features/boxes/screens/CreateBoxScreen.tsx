@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, TextInput, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
+import { NameAutocompleteField } from '../../../shared/components';
 import { theme } from '../../../shared/theme/theme';
 import { AppText } from '../../../shared/ui/AppText';
 import { AppButton } from '../../../shared/ui/AppButton';
@@ -9,15 +9,26 @@ import { Card } from '../../../shared/ui/Card';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useCreateBox } from '../hooks/useCreateBox';
 import { setFullLevel } from '../api/boxes.api'; // PATCH /boxes/:id/set-full
-import { postTelemetry } from '../api';
+import { authedFetch } from '../../auth/api/auth.api';
+import { useLangStore } from '../../../shared/i18n/lang.store';
+import { useHubStore, selectTelemetryForBox } from '../../hub/hub.store';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateBox'>;
 
 export function CreateBoxScreen({ navigation, route }: Props) {
   const { deviceId, currentQuantity, unit, onCreated } = route.params;
+  const lang = useLangStore((s) => s.lang);
+  const telemetry = useHubStore((s) => {
+    for (const hub of Object.values(s.hubs)) {
+      const t = hub.lastTelemetryByAddr?.[deviceId];
+      if (t) return t;
+    }
+    return undefined;
+  });
 
+  const liveQuantity = telemetry?.quantity ?? currentQuantity;
   const [name, setName] = React.useState('');
-  const [fullQuantity, setFullQuantity] = React.useState(String(currentQuantity));
+  const [fullQuantity, setFullQuantity] = React.useState(String(liveQuantity));
 
   const { submit, loading, error } = useCreateBox();
 
@@ -29,11 +40,6 @@ export function CreateBoxScreen({ navigation, route }: Props) {
       name: name.trim(),
       unit,
     });
-
-    // await postTelemetry({
-    //   deviceId,
-    //   quantity: currentQuantity,
-    // });
 
     await setFullLevel(created.id, Number(fullQuantity));
 
@@ -48,22 +54,46 @@ export function CreateBoxScreen({ navigation, route }: Props) {
         <AppText tone="muted" style={{ marginTop: 4 }}>
           Connected to <AppText>{deviceId}</AppText>. Current amount:{' '}
           <AppText>
-            {currentQuantity}
+            {liveQuantity}
             {unit}
           </AppText>
         </AppText>
 
         <View style={{ marginTop: theme.space.lg, gap: theme.space.md }}>
-          <Field label="Name">
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Rice"
-              placeholderTextColor={theme.colors.muted}
-              style={styles.input}
-              autoCapitalize="words"
-            />
-          </Field>
+          <NameAutocompleteField
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Rice"
+            minChars={2}
+            lang={lang}
+            fetchSuggest={async (q, lang) => {
+              const res = await authedFetch(
+                `/terms/suggest?q=${encodeURIComponent(q)}&lang=${lang}&limit=10`,
+              );
+              const json = await res.json();
+              if (!res.ok || !json?.ok) throw new Error('suggest failed');
+              return json.data as any; // צריך להיות SuggestTerm[]
+            }}
+            onCreateNew={async (text, lang) => {
+              const res = await authedFetch(`/terms`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, lang }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.ok) throw new Error(json?.errors?.formErrors?.[0] ?? 'Failed');
+            }}
+            onVote={async (termId, vote) => {
+              const res = await authedFetch(`/terms/${termId}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vote }), // 'UP' | 'DOWN'
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.ok) throw new Error('vote failed');
+            }}
+          />
 
           <Field label={`Full level (${unit})`}>
             <TextInput
@@ -77,9 +107,9 @@ export function CreateBoxScreen({ navigation, route }: Props) {
           </Field>
 
           <AppButton
-            title={`Use current (${currentQuantity}${unit})`}
+            title={`Use current (${liveQuantity}${unit})`}
             variant="ghost"
-            onPress={() => setFullQuantity(String(currentQuantity))}
+            onPress={() => setFullQuantity(String(liveQuantity))}
           />
 
           {error ? (

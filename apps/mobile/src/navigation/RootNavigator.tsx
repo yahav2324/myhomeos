@@ -8,13 +8,13 @@ import { ConnectBoxScreen } from '../features/boxes/screens/ConnectBoxScreen';
 import { CreateBoxScreen } from '../features/boxes/screens/CreateBoxScreen';
 import { SetFullLevelScreen } from '../features/boxes/screens/SetFullLevelScreen';
 import { BoxDetailsScreen } from '../features/boxes/screens/BoxDetailsScreen';
-
+import { SplashScreen } from '../features';
 import { WsProvider } from '../shared/ws/WsProvider';
 import { useLangStore } from '../shared/i18n/lang.store';
 
 import { AuthPhoneScreen } from '../features/auth/screens/AuthPhoneScreen';
 import { AuthOtpScreen } from '../features/auth/screens/AuthOtpScreen';
-
+import { AuthGoogleScreen } from '../features/auth/screens/AuthGoogleScreen';
 import { CreateHouseholdScreen } from '../features/households/screens/CreateHouseholdScreen';
 
 import { getTokens } from '../features/auth/auth.tokens';
@@ -23,20 +23,22 @@ import { HubScreen } from '../features/hub/screen/HubScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-type GateRoute = 'AuthPhone' | 'CreateHousehold' | 'Tabs';
+// ✅ שים AuthGoogle כ-route הראשי במקום AuthPhone
+type GateRoute = 'AuthGoogle' | 'CreateHousehold' | 'Tabs';
 
 async function probeRoute(): Promise<GateRoute> {
   const { accessToken, refreshToken } = await getTokens();
 
-  // אין טוקנים -> ללוגין
-  if (!accessToken && !refreshToken) return 'AuthPhone';
+  // אין טוקנים -> גוגל
+  if (!accessToken && !refreshToken) return 'AuthGoogle';
 
   // יש טוקנים -> נבדוק האם יש Household פעיל דרך /boxes
   const res = await authedFetch('/boxes', { method: 'GET' });
 
-  if (res.status === 401) return 'AuthPhone';
+  if (res.status === 401) return 'AuthGoogle';
 
   if (res.status === 403) {
+    // אצלך לפעמים אין json, אז נעשה safe
     const json = await res.json().catch(() => null);
     const msg = json?.message ?? '';
     if (typeof msg === 'string' && msg.includes('No active household')) return 'CreateHousehold';
@@ -72,8 +74,21 @@ export function RootNavigator() {
 
   return (
     <WsProvider>
-      <Stack.Navigator initialRouteName={initialRoute}>
+      <Stack.Navigator initialRouteName="Splash">
+        <Stack.Screen
+          name="Splash"
+          component={SplashScreen}
+          initialParams={{ next: initialRoute }}
+          options={{ headerShown: false }}
+        />
         {/* AUTH */}
+        <Stack.Screen
+          name="AuthGoogle"
+          component={AuthGoogleScreen}
+          options={{ headerShown: false }}
+        />
+
+        {/* אם אתה רוצה להשאיר OTP ל-debug, תשאיר – אבל הוא לא ה-default */}
         <Stack.Screen
           name="AuthPhone"
           component={AuthPhoneScreen}

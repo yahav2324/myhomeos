@@ -8,23 +8,13 @@ export type CatalogConfig = {
   downRejectMin: number;
 };
 
-const CatalogConfigSchema = z.object({
-  minQueryChars: z.number().int().min(1).max(10),
-  upApproveMin: z.number().int().min(1).max(1000),
-  downRejectMin: z.number().int().min(1).max(1000),
-});
+const DEFAULT_CFG: CatalogConfig = { minQueryChars: 2, upApproveMin: 5, downRejectMin: 10 };
 
-const PatchCatalogConfigSchema = z.object({
+const PatchSchema = z.object({
   minQueryChars: z.number().int().min(1).max(10).optional(),
   upApproveMin: z.number().int().min(1).max(1000).optional(),
   downRejectMin: z.number().int().min(1).max(1000).optional(),
 });
-
-const DEFAULT_CFG: CatalogConfig = {
-  minQueryChars: 2,
-  upApproveMin: 5,
-  downRejectMin: 10,
-};
 
 function normalizeCfg(x: any): CatalogConfig {
   return {
@@ -39,28 +29,24 @@ export class AdminCatalogService {
   constructor(private readonly repo: AdminCatalogRepoPrisma) {}
 
   async getConfig(): Promise<CatalogConfig> {
-    const row = await this.repo.getCatalogConfigRow();
+    const row = await this.repo.getConfigRow();
     if (!row) {
-      await this.repo.upsertCatalogConfig(DEFAULT_CFG);
+      await this.repo.upsertConfig(DEFAULT_CFG);
       return DEFAULT_CFG;
     }
     return normalizeCfg(row.json);
   }
 
-  async patchConfig(body: unknown): Promise<CatalogConfig> {
-    const parsed = PatchCatalogConfigSchema.safeParse(body);
+  async patchConfig(adminId: string, body: unknown): Promise<CatalogConfig> {
+    const parsed = PatchSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
-    const current = await this.getConfig();
-    const merged: CatalogConfig = {
-      ...current,
-      ...parsed.data,
-    };
+    const before = await this.getConfig();
+    const after: CatalogConfig = { ...before, ...parsed.data };
 
-    const ok = CatalogConfigSchema.safeParse(merged);
-    if (!ok.success) throw new BadRequestException(ok.error.flatten());
+    await this.repo.upsertConfig(after);
+    await this.repo.audit({ adminId, action: 'CONFIG_PATCH', before, after });
 
-    await this.repo.upsertCatalogConfig(merged);
-    return merged;
+    return after;
   }
 }

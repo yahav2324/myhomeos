@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TermScope, VoteValue } from '@prisma/client';
+import { TermScope, TermStatus, VoteValue } from '@prisma/client';
 import { z } from 'zod';
 import { TermsRepoPrisma } from './terms.repo.prisma';
 
@@ -32,22 +32,17 @@ function normalizeText(s: string) {
   return s.trim().toLowerCase();
 }
 
-// זיהוי שפה “פשוט אבל עובד” (עברית מול אנגלית/אחר)
 function detectLang(text: string): string {
   const t = text.trim();
-  // Hebrew block
   if (/[֐-׿]/.test(t)) return 'he';
-  // Latin
   if (/[a-zA-Z]/.test(t)) return 'en';
   return 'und';
 }
 
-// כאן תכניס בעתיד Google Translate. כרגע stub.
+// בעתיד: translate provider
 async function translateToEnglish(text: string, fromLang: string): Promise<string | null> {
-  // TODO: integrate Google Translate / other provider
-  // IMPORTANT: do NOT block user if translation fails
-  void fromLang;
   void text;
+  void fromLang;
   return null;
 }
 
@@ -55,11 +50,10 @@ async function translateToEnglish(text: string, fromLang: string): Promise<strin
 export class TermsService {
   constructor(private readonly repo: TermsRepoPrisma) {}
 
-  // Always read config from DB (SystemConfig key="catalog")
   async getCatalogConfig(): Promise<CatalogConfig> {
     const row = await this.repo.getSystemConfig('catalog');
+
     if (!row?.json || typeof row.json !== 'object') {
-      // create once (still not a prisma default; it is runtime init)
       await this.repo.upsertSystemConfig('catalog', { catalog: DEFAULT_CATALOG_CONFIG });
       return DEFAULT_CATALOG_CONFIG;
     }
@@ -81,7 +75,7 @@ export class TermsService {
     if (qTrim.length < cfg.minQueryChars) return [];
 
     const qNorm = normalizeText(qTrim);
-    const lang = (args.lang || 'en').trim();
+    const lang = (args.lang || 'en').trim().toLowerCase();
     const limit = Math.min(Math.max(args.limit || 10, 1), 30);
 
     return this.repo.suggest({ qNorm, lang, limit, userId: args.userId });
@@ -89,28 +83,22 @@ export class TermsService {
 
   async create(body: unknown, userId: string) {
     const parsed = CreateTermBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten());
-    }
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
     const text = parsed.data.text.trim();
     const lang = (parsed.data.lang?.trim() || detectLang(text) || 'und').toLowerCase();
     const scope = (parsed.data.scope ?? 'GLOBAL') as 'GLOBAL' | 'PRIVATE';
 
+    // ✅ GLOBAL חדש נכנס כ-LIVE כדי שכולם יוכלו לראות ולדרג
+    // ✅ PRIVATE נשאר פרטי ליוצר
     const term = await this.repo.createTerm({
       scope: scope === 'PRIVATE' ? TermScope.PRIVATE : TermScope.GLOBAL,
       ownerUserId: scope === 'PRIVATE' ? userId : null,
-      translations: [
-        {
-          lang,
-          text,
-          normalized: normalizeText(text),
-          source: 'USER',
-        },
-      ],
+      status: scope === 'PRIVATE' ? TermStatus.PENDING : TermStatus.LIVE,
+      translations: [{ lang, text, normalized: normalizeText(text), source: 'USER' }],
     });
 
-    // Auto translate to English if missing
+    // Auto translate to English (optional)
     const hasEn = term.translations.some((t) => t.lang === 'en');
     if (!hasEn && lang !== 'en') {
       try {
@@ -125,48 +113,51 @@ export class TermsService {
           });
         }
       } catch {
-        // swallow translation errors – internal only
+        // ignore
       }
     }
 
     const fresh = await this.repo.findTermById(term.id);
-    return { ok: true, data: fresh };
+
+    return {
+      ok: true,
+      data: fresh,
+    };
   }
 
   async vote(termId: string, body: unknown, userId: string) {
     const parsed = VoteBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten());
-    }
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
     const term = await this.repo.findTermById(termId);
     if (!term) throw new NotFoundException('Term not found');
 
-    // vote
+    // vote upsert
     await this.repo.upsertVote({
       termId,
       userId,
       vote: parsed.data.vote === 'UP' ? VoteValue.UP : VoteValue.DOWN,
     });
 
-    // counts + config -> status update (unless admin-approved)
     const cfg = await this.getCatalogConfig();
     const counts = await this.repo.getVoteCounts(termId);
 
-    let newStatus: any = term.status;
+    let newStatus: TermStatus = term.status;
     let approvedAt: Date | null = term.approvedAt ?? null;
 
     if (term.approvedByAdmin) {
-      newStatus = 'APPROVED';
+      newStatus = TermStatus.APPROVED;
       if (!approvedAt) approvedAt = new Date();
     } else if (counts.up >= cfg.upApproveMin) {
-      newStatus = 'APPROVED';
+      newStatus = TermStatus.APPROVED;
       if (!approvedAt) approvedAt = new Date();
     } else if (counts.down >= cfg.downRejectMin) {
-      newStatus = 'REJECTED';
+      newStatus = TermStatus.REJECTED;
       approvedAt = null;
     } else {
-      newStatus = 'PENDING';
+      // ✅ נשאר LIVE כדי שכולם ימשיכו לראות ולדרג
+      // (PENDING שמור למקרה של “ריסאבמיט” בעתיד / או PRIVATE)
+      newStatus = term.scope === TermScope.PRIVATE ? TermStatus.PENDING : TermStatus.LIVE;
       approvedAt = null;
     }
 
@@ -175,7 +166,7 @@ export class TermsService {
     return {
       ok: true,
       data: {
-        termId,
+        id: termId,
         status: updated.status,
         approvedAt: updated.approvedAt,
         upCount: counts.up,

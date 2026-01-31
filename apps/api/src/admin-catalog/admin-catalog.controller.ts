@@ -1,32 +1,21 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt.guard';
 import { AdminCatalogService } from './admin-catalog.service';
-
-// TODO: החלף לשם הגארד שלך
-// import { JwtAuthGuard } from '../auth/guards/jwt.guard';
-
-function assertAdmin(req: any) {
-  // אצלך תבדוק user.isAdmin או role
-  if (!req?.user?.isAdmin) {
-    // אפשר גם throw Unauthorized/Forbidden
-    throw new Error('Forbidden: admin only');
-  }
-}
+import { CurrentHouseholdId } from '../auth/current-user.decorator';
+import { AdminGuard } from '../auth/guard/admin.guard';
 
 @Controller('/admin/catalog')
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminCatalogController {
   constructor(private readonly svc: AdminCatalogService) {}
 
-  // @UseGuards(JwtAuthGuard)
   @Get('/config')
-  async getConfig(@Req() req: any) {
-    assertAdmin(req);
+  async get() {
     return { ok: true, data: await this.svc.getConfig() };
   }
 
-  // @UseGuards(JwtAuthGuard)
   @Patch('/config')
-  async patchConfig(@Req() req: any, @Body() body: unknown) {
-    assertAdmin(req);
-    return { ok: true, data: await this.svc.patchConfig(body) };
+  async patch(@CurrentHouseholdId() userId: string, @Body() body: unknown) {
+    return { ok: true, data: await this.svc.patchConfig(userId, body) };
   }
 }

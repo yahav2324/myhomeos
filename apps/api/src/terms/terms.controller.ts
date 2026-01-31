@@ -1,8 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TermsService } from './terms.service';
-
-// אם יש לך guard משלך – השתמש בו כאן
-// import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { JwtAuthGuard } from '../auth/jwt.guard';
 
 function getUserIdOrNull(req: any): string | null {
   return req?.user?.id ?? null;
@@ -33,7 +31,7 @@ export class TermsController {
       ok: true,
       data: await this.terms.suggest({
         q: q ?? '',
-        lang: lang ?? 'en',
+        lang: (lang ?? 'en').toLowerCase(),
         limit: Number.isFinite(lim) ? lim : 10,
         userId,
       }),
@@ -41,7 +39,7 @@ export class TermsController {
   }
 
   // POST /terms  (requires auth)
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('/terms')
   async create(@Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);
@@ -49,7 +47,7 @@ export class TermsController {
   }
 
   // POST /terms/:id/vote  (requires auth)
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('/terms/:id/vote')
   async vote(@Param('id') id: string, @Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);

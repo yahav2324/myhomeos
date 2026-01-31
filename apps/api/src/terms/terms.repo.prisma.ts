@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TermScope, VoteValue } from '@prisma/client';
+import { TermScope, TermStatus, VoteValue } from '@prisma/client';
 
 @Injectable()
 export class TermsRepoPrisma {
@@ -21,20 +21,36 @@ export class TermsRepoPrisma {
 
   // ---- Suggest ----
   async suggest(args: { qNorm: string; lang: string; limit: number; userId?: string | null }) {
-    // Find matching translations by lang + prefix
     const matches = await this.prisma.termTranslation.findMany({
       where: {
         lang: args.lang,
         normalized: { startsWith: args.qNorm },
         term: {
-          // only global approved/pending + private of this user
           OR: [
-            { scope: TermScope.GLOBAL, status: { in: ['APPROVED', 'PENDING'] } as any },
-            args.userId ? { scope: TermScope.PRIVATE, ownerUserId: args.userId } : undefined,
+            // ✅ גלובליים שנראים לכולם
+            { scope: TermScope.GLOBAL, status: { in: [TermStatus.LIVE, TermStatus.APPROVED] } },
+
+            // ✅ PENDING/PRIVATE נראה רק ליוצר
+            args.userId
+              ? {
+                  scope: TermScope.PRIVATE,
+                  ownerUserId: args.userId,
+                  status: { in: [TermStatus.PENDING, TermStatus.LIVE, TermStatus.APPROVED] },
+                }
+              : undefined,
+
+            // ✅ אם תרצה שגם PENDING גלובלי יראה רק ליוצר (לריסאבמיט)
+            args.userId
+              ? {
+                  scope: TermScope.GLOBAL,
+                  status: TermStatus.PENDING,
+                  ownerUserId: args.userId, // אם תשתמש בזה בעתיד (כרגע ownerUserId לרוב null בגלובלי)
+                }
+              : undefined,
           ].filter(Boolean) as any,
         },
       },
-      take: args.limit * 3, // oversample; we'll sort and cut later
+      take: args.limit * 3,
       include: {
         term: {
           select: {
@@ -43,17 +59,13 @@ export class TermsRepoPrisma {
             ownerUserId: true,
             status: true,
             approvedByAdmin: true,
-            translations: {
-              select: { lang: true, text: true },
-            },
-            _count: { select: { votes: true } },
+            translations: { select: { lang: true, text: true } },
           },
         },
       },
       orderBy: [{ normalized: 'asc' }],
     });
 
-    // load votes aggregate + myVote in one go for the term ids
     const termIds = Array.from(new Set(matches.map((m) => m.termId)));
     if (termIds.length === 0) return [];
 
@@ -81,7 +93,7 @@ export class TermsRepoPrisma {
     const myVoteByTerm = new Map<string, VoteValue>();
     for (const v of myVotes) myVoteByTerm.set(v.termId, v.vote);
 
-    // pick best display text: requested lang, else english, else any
+    // ✅ החזרה בפורמט שה-Autocomplete שלך מצפה
     const out = matches.map((m) => {
       const t = m.term;
       const c = countsByTerm.get(t.id) ?? { up: 0, down: 0 };
@@ -92,44 +104,44 @@ export class TermsRepoPrisma {
         t.translations[0]?.text ??
         m.text;
 
-      const approved = t.approvedByAdmin || t.status === ('APPROVED' as any);
-
       return {
-        termId: t.id,
+        id: t.id,
         text: textLang,
-        lang: args.lang,
-        status: t.status,
-        approved,
-        scope: t.scope,
+        status: t.status, // LIVE/PENDING/APPROVED/REJECTED
         upCount: c.up,
         downCount: c.down,
         myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
       };
     });
 
-    // rank: private first, then approved, then higher score
+    // מיון: APPROVED לפני LIVE לפני PENDING (למשתמש)
     out.sort((a, b) => {
-      const aPrivate = a.scope === TermScope.PRIVATE ? 1 : 0;
-      const bPrivate = b.scope === TermScope.PRIVATE ? 1 : 0;
-      if (aPrivate !== bPrivate) return bPrivate - aPrivate;
+      const rank = (s: TermStatus) =>
+        s === TermStatus.APPROVED
+          ? 3
+          : s === TermStatus.LIVE
+            ? 2
+            : s === TermStatus.PENDING
+              ? 1
+              : 0;
 
-      const aAppr = a.approved ? 1 : 0;
-      const bAppr = b.approved ? 1 : 0;
-      if (aAppr !== bAppr) return bAppr - aAppr;
+      const ra = rank(a.status as any);
+      const rb = rank(b.status as any);
+      if (ra !== rb) return rb - ra;
 
-      const aScore = a.upCount - a.downCount;
-      const bScore = b.upCount - b.downCount;
-      if (aScore !== bScore) return bScore - aScore;
+      const sa = a.upCount - a.downCount;
+      const sb = b.upCount - b.downCount;
+      if (sa !== sb) return sb - sa;
 
       return a.text.localeCompare(b.text);
     });
 
-    // unique by termId (because we oversampled translations)
+    // unique by id
     const seen = new Set<string>();
     const uniq: typeof out = [];
     for (const x of out) {
-      if (seen.has(x.termId)) continue;
-      seen.add(x.termId);
+      if (seen.has(x.id)) continue;
+      seen.add(x.id);
       uniq.push(x);
       if (uniq.length >= args.limit) break;
     }
@@ -141,12 +153,34 @@ export class TermsRepoPrisma {
   async createTerm(args: {
     scope: TermScope;
     ownerUserId?: string | null;
+    status: TermStatus;
     translations: Array<{ lang: string; text: string; normalized: string; source: string }>;
   }) {
+    // ✅ מניעת כפולים:
+    // אם כבר קיימת תרגום זהה (lang+normalized) לטֶרם גלובלי LIVE/APPROVED -> נחזיר אותו במקום ליצור חדש
+    const first = args.translations[0];
+    const existing = await this.prisma.termTranslation.findFirst({
+      where: {
+        lang: first.lang,
+        normalized: first.normalized,
+        term: {
+          scope: args.scope,
+          status: { in: [TermStatus.LIVE, TermStatus.APPROVED] },
+        },
+      },
+      select: { termId: true },
+    });
+
+    if (existing?.termId) {
+      const found = await this.findTermById(existing.termId);
+      if (found) return found as any;
+    }
+
     return this.prisma.term.create({
       data: {
         scope: args.scope,
         ownerUserId: args.ownerUserId ?? null,
+        status: args.status,
         translations: { create: args.translations },
       },
       include: { translations: true },
@@ -203,7 +237,7 @@ export class TermsRepoPrisma {
     return { up, down };
   }
 
-  async updateTermStatus(termId: string, status: any, approvedAt?: Date | null) {
+  async updateTermStatus(termId: string, status: TermStatus, approvedAt?: Date | null) {
     return this.prisma.term.update({
       where: { id: termId },
       data: { status, approvedAt: approvedAt ?? undefined },
