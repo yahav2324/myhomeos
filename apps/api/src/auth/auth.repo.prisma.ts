@@ -79,10 +79,43 @@ export class AuthRepoPrisma {
   }
 
   async findOrCreateUserByPhone(phoneE164: string) {
+    if (!phoneE164) throw new Error('phoneE164 is required');
+
     return this.prisma.user.upsert({
       where: { phoneE164 },
       update: { lastLoginAt: new Date() },
       create: { phoneE164, lastLoginAt: new Date() },
+    });
+  }
+
+  async upsertGoogleUser(args: {
+    googleSub: string;
+    email?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+  }) {
+    return this.prisma.user.upsert({
+      where: { googleSub: args.googleSub },
+      create: {
+        googleSub: args.googleSub,
+        email: args.email ?? undefined,
+        displayName: args.displayName ?? undefined,
+        avatarUrl: args.avatarUrl ?? undefined,
+        lastLoginAt: new Date(),
+      },
+      update: {
+        // אם אתה רוצה “בטוח” שלא ידרוס:
+        ...(args.email ? { email: args.email } : {}),
+        ...(args.displayName ? { displayName: args.displayName } : {}),
+        ...(args.avatarUrl ? { avatarUrl: args.avatarUrl } : {}),
+        lastLoginAt: new Date(),
+      },
+    });
+  }
+
+  async countActiveMemberships(userId: string) {
+    return this.prisma.householdMember.count({
+      where: { userId, status: 'ACTIVE' },
     });
   }
 
@@ -91,7 +124,8 @@ export class AuthRepoPrisma {
       data: {
         userId: args.userId,
         refreshTokenHash: args.refreshTokenHash,
-        deviceName: args.deviceName,
+        deviceName: args.deviceName ?? null,
+        lastUsedAt: new Date(),
       },
     });
   }

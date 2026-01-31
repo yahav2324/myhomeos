@@ -24,7 +24,7 @@ export type HubEvt =
       boxId: string;
       scanMayMissBecauseBoxConnected: boolean;
     }
-  | { type: 'telemetry'; boxId: string; payload: any }
+  | { type: 'telemetry'; boxId: string; payload: unknown }
   // fallback:
   | { type: string; [k: string]: any };
 

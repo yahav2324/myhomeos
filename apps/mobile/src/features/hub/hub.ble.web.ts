@@ -5,6 +5,10 @@ const HUB_SERVICE_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1';
 const HUB_CMD_CHAR_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
 const HUB_EVT_CHAR_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3';
 
+type BluetoothDevice = any;
+type BluetoothRemoteGATTCharacteristic = any;
+type BluetoothRemoteGATTServer = any;
+
 type HubSession = {
   hubId: string;
   device: BluetoothDevice;

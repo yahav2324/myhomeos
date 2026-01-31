@@ -5,6 +5,7 @@ import { AuthRepoPrisma } from './auth.repo.prisma';
 import { generateOtp6, makeOtpHash, makeRefreshToken, makeRefreshTokenHash } from './auth.crypto';
 import { createOtpSender } from './otp-sender/otp-sender.factory';
 import { OtpSender } from './otp-sender/otp-sender';
+import { GoogleAuthService } from './google.auth.service';
 
 @Injectable()
 export class AuthService {
@@ -13,6 +14,7 @@ export class AuthService {
   constructor(
     private readonly repo: AuthRepoPrisma,
     private readonly jwt: JwtService,
+    private readonly google: GoogleAuthService,
   ) {
     this.otpSender = createOtpSender();
   }
@@ -30,7 +32,7 @@ export class AuthService {
     return String(process.env.OTP_PEPPER ?? 'pepper');
   }
   private refreshPepper() {
-    return String(process.env.OTP_PEPPER ?? 'pepper');
+    return String(process.env.REFRESH_PEPPER ?? 'pepper');
   }
 
   private accessTtlSec() {
@@ -147,5 +149,47 @@ export class AuthService {
   async logoutAll(userId: string) {
     await this.repo.revokeAllSessions(userId);
     return { ok: true };
+  }
+
+  async googleLogin(idToken: string, deviceName?: string) {
+    const gp = await this.google.verify(idToken);
+
+    const user = await this.repo.upsertGoogleUser({
+      googleSub: gp.sub,
+      email: gp.email,
+      displayName: gp.name,
+      avatarUrl: gp.picture,
+    });
+
+    // אם אתה רוצה לשמור את אותו “סגנון” כמו OTP:
+    // needsOnboarding = !activeHouseholdId
+    // (זה תלוי איך אתה מנהל activeHouseholdId. כרגע אצלך ב-OTP זה זה.)
+    const needsOnboarding = !user.activeHouseholdId;
+
+    const accessToken = await this.jwt.signAsync(
+      { sub: user.id },
+      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: this.accessTtlSec() },
+    );
+
+    // ✅ אותו מנגנון refresh כמו OTP כדי ש-refresh/logout יעבדו
+    const refreshToken = makeRefreshToken();
+    const refreshTokenHash = makeRefreshTokenHash(refreshToken, this.refreshPepper());
+
+    await this.repo.createSession({
+      userId: user.id,
+      refreshTokenHash,
+      deviceName,
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        phoneE164: user.phoneE164,
+        activeHouseholdId: user.activeHouseholdId,
+      },
+      needsOnboarding,
+    };
   }
 }

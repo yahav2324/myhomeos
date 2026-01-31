@@ -3,11 +3,16 @@ import { OtpRequestSchema, OtpVerifySchema } from '@smart-kitchen/contracts';
 import { parseOrThrow } from '../common/zod';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
-import { CurrentHouseholdId } from './current-user.decorator';
+import { CurrentUserId } from './current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  @Post('google')
+  async google(@Body() body: { idToken: string; deviceName?: string }) {
+    return this.auth.googleLogin(body.idToken, body.deviceName);
+  }
 
   @Post('otp/request')
   async request(@Body() body: unknown) {
@@ -34,13 +39,13 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout-all')
-  async logoutAll(@CurrentHouseholdId() userId: string) {
+  async logoutAll(@CurrentUserId() userId: string) {
     return this.auth.logoutAll(userId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  async me(@CurrentHouseholdId() userId: string) {
+  async me(@CurrentUserId() userId: string) {
     return { userId };
   }
 }

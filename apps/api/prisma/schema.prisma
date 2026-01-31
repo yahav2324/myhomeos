@@ -96,7 +96,14 @@ model TelemetryEvent {
 
 model User {
   id                String    @id @default(uuid())
-  phoneE164         String    @unique
+
+  // ✅ was required, now optional (כי Google login בלי טלפון)
+  phoneE164         String?   @unique
+
+  // ✅ NEW: Google user id (sub)
+  googleSub         String?   @unique
+  email             String?   // לא חייב unique (אבל אפשר אם בא לך)
+  
   displayName       String?
   avatarUrl         String?
   activeHouseholdId String?
@@ -108,7 +115,6 @@ model User {
   sessions    AuthSession[]
   memberships HouseholdMember[]
 
-  // ✅ NEW: trust flags for Terms moderation
   trust UserTrust?
   shoppingDefaults Json?
 
