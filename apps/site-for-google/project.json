@@ -1,0 +1,14 @@
+{
+  "name": "site-for-google",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/site-for-google/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node tools/scripts/site-build.js site-for-google"
+      }
+    }
+  }
+}

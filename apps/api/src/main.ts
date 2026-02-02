@@ -9,7 +9,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(
     helmet({
-      contentSecurityPolicy: false, // ב-API אין צורך CSP
+      contentSecurityPolicy: false, // ב-API אין צורך CSP,
+      crossOriginResourcePolicy: { policy: 'cross-origin' }, // הוסף את זה
     }),
   );
 
@@ -29,6 +30,9 @@ async function bootstrap() {
     'http://127.0.0.1:8081',
     'http://localhost:19000',
     'http://127.0.0.1:19000',
+    'https://api.myhomeos.app', // הוסף את זה במפורש
+    ...(adminOrigin ? [adminOrigin] : []),
+    // ... שאר הרשימה
   ];
 
   const allowedOrigins = [

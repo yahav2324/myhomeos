@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>myhomeos</title>
+    <meta name="description" content="myhomeos - Smart home inventory and kitchen management app." />
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; max-width: 820px; margin: 40px auto; padding: 0 16px; line-height: 1.6; }
+      header { margin-bottom: 24px; }
+      .card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; margin: 16px 0; }
+      a { color: #0b57d0; }
+      footer { margin-top: 28px; font-size: 14px; color: #555; }
+      code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>myhomeos</h1>
+      <p><strong>myhomeos</strong> is a mobile app that helps you track household items and kitchen inventory, and organize shopping lists.</p>
+    </header>
+
+    <div class="card">
+      <h2>What the app does</h2>
+      <ul>
+        <li>Lets you sign in with Google to access your account.</li>
+        <li>Helps manage household inventory and shopping lists.</li>
+        <li>Shows item status and notifications inside the app.</li>
+      </ul>
+      <p>This website exists to provide app information, privacy policy, and terms required for Google OAuth.</p>
+    </div>
+
+    <div class="card">
+      <h2>Links</h2>
+      <ul>
+        <li><a href="/privacy.html">Privacy Policy</a></li>
+        <li><a href="/terms.html">Terms of Service</a></li>
+      </ul>
+    </div>
+
+    <footer>
+      <p>Contact: <a href="mailto:support@myhomeos.app">support@myhomeos.app</a></p>
+      <p>Last updated: <span id="d"></span></p>
+    </footer>
+
+    <script>
+      // tiny helper, not required but harmless
+      document.getElementById('d').textContent = new Date().toISOString().slice(0,10);
+    </script>
+  </body>
+</html>

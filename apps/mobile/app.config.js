@@ -31,7 +31,7 @@ module.exports = {
         backgroundColor: '#ffffff',
       },
       edgeToEdgeEnabled: true,
-      package: 'com.anonymous.mobile',
+      package: 'app.myhomeos.mobile',
     },
 
     web: {

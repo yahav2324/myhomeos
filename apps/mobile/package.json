@@ -11,6 +11,7 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@testing-library/react-native": "*",
     "expo": "*",
+    "expo-auth-session": "^7.0.10",
     "expo-av": "^16.0.8",
     "expo-constants": "^18.0.13",
     "expo-crypto": "^15.0.8",

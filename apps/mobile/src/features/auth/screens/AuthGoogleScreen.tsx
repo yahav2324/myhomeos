@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Pressable, Text } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
+import * as Google from 'expo-auth-session/providers/google';
 
 import { googleLogin } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
@@ -11,39 +11,31 @@ WebBrowser.maybeCompleteAuthSession();
 export function AuthGoogleScreen({ navigation }: any) {
   const setSession = useAuthStore((s) => s.setSession);
 
-  // ✅ תמיד לחשב, אבל בלי early-return לפני hooks
-  const clientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
-
-  // ✅ useProxy הוסר בגרסאות מסוימות; preferLocalhost כן קיים
-  const redirectUri = AuthSession.makeRedirectUri({
-    preferLocalhost: true,
-    path: '--/redirect',
-  });
-
-  console.log('GOOGLE clientId=', clientId);
-  console.log('GOOGLE redirectUri=', redirectUri);
-  const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
-
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: clientId || 'MISSING_CLIENT_ID',
-      scopes: ['openid', 'profile', 'email'],
-      redirectUri,
-      responseType: AuthSession.ResponseType.IdToken,
-      usePKCE: false, // ✅ חשוב!
-      extraParams: { nonce: 'nonce', prompt: 'select_account' },
-    },
-    discovery,
-  );
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
 
   const [err, setErr] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const expoClientId = webClientId; // לרוב אפשר להשתמש באותו Web Client ID
 
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    expoClientId,
+    androidClientId,
+    iosClientId,
+    webClientId,
+    scopes: ['openid', 'profile', 'email'],
+  });
+  console.log('androidClientId=', androidClientId);
+  console.log('iosClientId=', iosClientId);
+  console.log('webClientId=', webClientId);
+  console.log('redirectUri=', request?.redirectUri);
   React.useEffect(() => {
     (async () => {
       if (response?.type !== 'success') return;
 
-      const idToken = (response.params as any)?.id_token;
+      // ✅ זה ה-id_token שמגיע מגוגל בצורה “תקינה” לנייטיב
+      const idToken = response.authentication?.idToken;
       if (!idToken) {
         setErr('חסר id_token מגוגל');
         return;
@@ -67,12 +59,12 @@ export function AuthGoogleScreen({ navigation }: any) {
     })();
   }, [response, navigation, setSession]);
 
-  // ✅ עכשיו מותר לעשות UI conditionally (זה לא Hooks)
-  if (!clientId) {
+  // UI
+  if (!androidClientId) {
     return (
       <View style={{ padding: 16, gap: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: '700' }}>התחברות</Text>
-        <Text style={{ color: 'red' }}>חסר EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ב-.env</Text>
+        <Text style={{ color: 'red' }}>חסר EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ב-.env</Text>
       </View>
     );
   }
@@ -86,7 +78,7 @@ export function AuthGoogleScreen({ navigation }: any) {
 
       <Pressable
         disabled={!request || loading}
-        onPress={() => promptAsync()}
+        onPress={() => promptAsync({ useProxy: true })}
         style={{
           padding: 14,
           borderRadius: 12,

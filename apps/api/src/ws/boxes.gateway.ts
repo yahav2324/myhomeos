@@ -2,7 +2,14 @@ import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { Server } from 'socket.io';
 import type { Box } from '@smart-kitchen/contracts';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  cors: {
+    origin: '*', // בשלב הבדיקות, כדי לוודא שזו לא הבעיה
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  transports: ['websocket'], // תואם למה שכתבת במובייל
+})
 export class BoxesGateway {
   @WebSocketServer()
   server!: Server;
