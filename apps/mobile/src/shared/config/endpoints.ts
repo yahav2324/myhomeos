@@ -1,11 +1,13 @@
-const DEFAULT_API = 'http://localhost:3000/api';
+const DEFAULT_API = 'https://api.myhomeos.app/api';
 
 export function getApiBase(): string {
-  // אם יש לך ENV – תחליף פה, אבל בינתיים נשאיר קבוע
   return DEFAULT_API;
 }
 
 export function getWsBase(): string {
-  // WS חייב להיות בלי /api
-  return getApiBase().replace(/\/api\/?$/, '');
+  // נחלץ את הבסיס (בלי ה-/api) ונחליף את ה-https ב-wss
+  // התוצאה תהיה: wss://api.myhomeos.app
+  return getApiBase()
+    .replace(/\/api\/?$/, '')
+    .replace(/^http/, 'ws');
 }

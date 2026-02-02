@@ -22,8 +22,7 @@ module.exports = {
     icon: asset('assets/images/icon.png'),
     scheme: 'mobile',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
-
+    newArchEnabled: false,
     ios: { supportsTablet: true },
 
     android: {

@@ -45,7 +45,10 @@ export function getSocket() {
 
   socket.on('connect', () => console.log('[WS] connected', socket?.id));
   socket.on('disconnect', (reason) => console.log('[WS] disconnected', reason));
-  socket.on('connect_error', (err) => console.log('[WS] connect_error', err?.message));
+  socket.on('connect_error', (err) => {
+    console.log('[WS] connect_error message:', err.message);
+    console.log('[WS] connect_error object:', err);
+  });
   socket.onAny((event, ...args) => {
     console.log('[WS onAny]', event, args);
   });
