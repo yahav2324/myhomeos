@@ -1,89 +1,76 @@
 import * as React from 'react';
 import { View, Pressable, Text } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 import { googleLogin } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
 
-WebBrowser.maybeCompleteAuthSession();
+type GoogleTokens = { accessToken: string; idToken?: string };
+
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
+  offlineAccess: true,
+  forceCodeForRefreshToken: true,
+});
 
 export function AuthGoogleScreen({ navigation }: any) {
   const setSession = useAuthStore((s) => s.setSession);
-
-  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
-
   const [err, setErr] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const expoClientId = webClientId; // לרוב אפשר להשתמש באותו Web Client ID
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId,
-    androidClientId,
-    iosClientId,
-    webClientId,
-    scopes: ['openid', 'profile', 'email'],
-  });
-  console.log('androidClientId=', androidClientId);
-  console.log('iosClientId=', iosClientId);
-  console.log('webClientId=', webClientId);
-  console.log('redirectUri=', request?.redirectUri);
-  React.useEffect(() => {
-    (async () => {
-      if (response?.type !== 'success') return;
+  async function onGoogle() {
+    setLoading(true);
+    setErr(null);
 
-      // ✅ זה ה-id_token שמגיע מגוגל בצורה “תקינה” לנייטיב
-      const idToken = response.authentication?.idToken;
-      if (!idToken) {
-        setErr('חסר id_token מגוגל');
-        return;
-      }
+    try {
+      console.log('[GOOGLE] 1) hasPlayServices...');
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-      setLoading(true);
-      setErr(null);
-      try {
-        const res = await googleLogin(idToken, 'mobile');
-        await setSession(res.accessToken, res.refreshToken, Boolean(res.needsOnboarding));
+      console.log('[GOOGLE] 2) signIn...');
+      await GoogleSignin.signIn();
 
-        navigation.reset({
-          index: 0,
-          routes: [{ name: res.needsOnboarding ? 'CreateHousehold' : 'Tabs' }],
-        });
-      } catch (e: any) {
-        setErr(e?.message ?? 'Failed');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [response, navigation, setSession]);
+      console.log('[GOOGLE] 3) getTokens...');
+      const tokens = (await GoogleSignin.getTokens()) as unknown as GoogleTokens;
+      console.log('[GOOGLE] tokens keys=', Object.keys(tokens));
+      console.log('[GOOGLE] has idToken?', Boolean(tokens.idToken));
 
-  // UI
-  if (!androidClientId) {
-    return (
-      <View style={{ padding: 16, gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: '700' }}>התחברות</Text>
-        <Text style={{ color: 'red' }}>חסר EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ב-.env</Text>
-      </View>
-    );
+      const idToken = tokens.idToken;
+      if (!idToken) throw new Error('חסר id_token מגוגל');
+
+      console.log('[GOOGLE] 4) calling backend googleLogin...');
+      const res = await googleLogin(idToken, 'mobile');
+
+      console.log('[GOOGLE] 5) setSession...');
+      await setSession(res.accessToken, res.refreshToken, Boolean(res.needsOnboarding));
+
+      console.log('[GOOGLE] 6) navigation.reset...');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: res.needsOnboarding ? 'CreateHousehold' : 'Tabs' }],
+      });
+    } catch (e: any) {
+      console.log('[GOOGLE] ERROR:', e);
+      setErr(e?.message ?? String(e) ?? 'Failed');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <View style={{ padding: 16, gap: 12 }}>
       <Text style={{ fontSize: 22, fontWeight: '700' }}>התחברות</Text>
-      <Text style={{ opacity: 0.8 }}>כניסה עם Google (בלי SMS)</Text>
+      <Text style={{ opacity: 0.8 }}>כניסה עם Google</Text>
 
       {err ? <Text style={{ color: 'red' }}>{err}</Text> : null}
 
       <Pressable
-        disabled={!request || loading}
-        onPress={() => promptAsync({ useProxy: true })}
+        disabled={loading}
+        onPress={onGoogle}
         style={{
           padding: 14,
           borderRadius: 12,
           borderWidth: 1,
-          opacity: !request || loading ? 0.6 : 1,
+          opacity: loading ? 0.6 : 1,
         }}
       >
         <Text style={{ textAlign: 'center' }}>{loading ? 'מתחבר...' : 'הזדהות עם Google'}</Text>

@@ -4,11 +4,14 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "eas-build-post-install": "cd ../../ && node tools/scripts/eas-build-post-install.mjs . mobile"
+    "eas-build-post-install": "cd ../../ && node tools/scripts/eas-build-post-install.mjs . mobile",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/metro-config": "*",
     "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.1",
     "@testing-library/react-native": "*",
     "expo": "*",
     "expo-auth-session": "^7.0.10",

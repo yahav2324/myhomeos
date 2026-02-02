@@ -1,7 +1,7 @@
 import { emitAuthRequired } from '../auth.events';
 import { getTokens, saveTokens, clearTokens } from '../auth.tokens';
 
-const API_BASE = process.env.API_BASE_URL ?? 'https://api.myhomeos.app/api';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.myhomeos.app/api';
 
 export async function googleLogin(idToken: string, deviceName?: string) {
   return fetchJson('/auth/google', {
@@ -16,15 +16,45 @@ async function fetchJson(path: string, init?: RequestInit) {
     ...(init?.headers ?? {}),
   };
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: mergedHeaders,
-  });
+  const url = `${API_BASE}${path}`;
+  console.log('[API] →', init?.method ?? 'GET', url);
 
-  const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new Error(json?.message ?? `HTTP ${res.status}`);
-  return json;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: mergedHeaders,
+      signal: ctrl.signal,
+    });
+
+    const text = await res.text();
+
+    // אם קיבלת HTML/טקסט (למשל Cloudflare), שלא יקרוס על JSON.parse
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      // נשאיר json null
+    }
+
+    if (!res.ok) {
+      const msg =
+        json?.message ??
+        (text?.slice(0, 200) ? `HTTP ${res.status}: ${text.slice(0, 200)}` : `HTTP ${res.status}`);
+      throw new Error(msg);
+    }
+
+    return json;
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      throw new Error('Timeout: השרת לא ענה בזמן (15s)');
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 export async function otpRequest(phoneE164: string) {

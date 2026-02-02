@@ -1,4 +1,4 @@
-package com.anonymous.mobile
+package com.yahav2324.smartkitchensource
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

@@ -27,7 +27,7 @@ module.exports = {
 
     android: {
       adaptiveIcon: {
-        foregroundImage: asset('assets/images/adaptive-icon.png'),
+        foregroundImage: asset('assets/images/myHomeOS.png'),
         backgroundColor: '#ffffff',
       },
       edgeToEdgeEnabled: true,
@@ -47,6 +47,14 @@ module.exports = {
           imageWidth: 200,
           resizeMode: 'contain',
           backgroundColor: '#ffffff',
+        },
+      ],
+      [
+        '@react-native-google-signin/google-signin',
+        {
+          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME, // ✅ חובה
+          androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
         },
       ],
     ],
