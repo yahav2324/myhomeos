@@ -26,7 +26,9 @@ export const i18n = new I18n({
     minutesAgo: '{{n}}m ago',
     hoursAgo: '{{n}}h ago',
     daysAgo: '{{n}}d ago',
-
+    hello: 'Hello',
+    userName: 'User',
+    logout: 'Logout',
     // ConnectBox
     connectBoxTitle: 'Connect your box',
     connectBoxSubtitle: 'Turn on the box and keep it nearby. We’ll connect via Bluetooth.',
@@ -69,8 +71,10 @@ export const i18n = new I18n({
     deviceLabel: 'מכשיר:',
     currentAmountLabel: 'כמות נוכחית:',
     continue: 'המשך',
-
+    hello: 'שלום',
+    userName: 'משתמש',
     languageRestartNote: 'שינוי שפה עשוי להפעיל מחדש את האפליקציה כדי להחיל כיווניות.',
+    logout: 'התנתק',
   },
 });
 

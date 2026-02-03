@@ -4,6 +4,7 @@ const asset = (p) => path.join(__dirname, p);
 
 module.exports = {
   expo: {
+    cli: { appVersionSource: 'remote' },
     extra: {
       eas: {
         projectId: 'dc9c102a-3a7c-4441-b102-d20655247ff0',
@@ -52,9 +53,11 @@ module.exports = {
       [
         '@react-native-google-signin/google-signin',
         {
-          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME,
-          androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
+          androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '',
+          iosUrlScheme:
+            process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ??
+            'com.googleusercontent.apps.953054699390-sngj4c737f05rns5v0bnl9rvej804uhl',
         },
       ],
     ],

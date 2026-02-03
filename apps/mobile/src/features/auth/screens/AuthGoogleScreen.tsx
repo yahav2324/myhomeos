@@ -1,12 +1,22 @@
 import * as React from 'react';
-import { View, Pressable, Text } from 'react-native';
+import { View, Pressable, Text, Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { Prompt } from 'expo-auth-session';
+
+// ספריות תמיכה ל-Web
+import * as GoogleWeb from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 
 import { googleLogin } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
 
+// נדרש עבור Web כדי להשלים את תהליך האימות
+WebBrowser.maybeCompleteAuthSession();
+
 type GoogleTokens = { accessToken: string; idToken?: string };
 
+// קונפיגורציה ל-Mobile
 GoogleSignin.configure({
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
   offlineAccess: true,
@@ -18,40 +28,91 @@ export function AuthGoogleScreen({ navigation }: any) {
   const [err, setErr] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  async function onGoogle() {
-    setLoading(true);
-    setErr(null);
+  // הגדרת Hook עבור Web בלבד
+  const [request, response, promptAsync] = GoogleWeb.useAuthRequest({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
+    responseType: 'id_token',
+    prompt: Prompt.SelectAccount,
+    scopes: ['openid', 'profile', 'email'],
+    redirectUri: AuthSession.makeRedirectUri({
+      preferLocalhost: true,
+    }),
+  });
 
+  // פונקציית עזר לפענוח השם מה-Token ב-Web (מכיוון שזה Base64 פשוט)
+  const decodeNameFromIdToken = (token: string) => {
     try {
-      console.log('[GOOGLE] 1) hasPlayServices...');
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(''),
+      );
+      return JSON.parse(jsonPayload).name;
+    } catch (e) {
+      return 'משתמש גוגל';
+    }
+  };
 
-      console.log('[GOOGLE] 2) signIn...');
-      await GoogleSignin.signIn();
+  // מאזין לתגובה ב-Web
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.params.id_token || response.authentication?.idToken;
+      if (idToken) {
+        const name = decodeNameFromIdToken(idToken);
+        handleSuccessLogin(idToken, name);
+      } else {
+        setErr('לא התקבל id_token מגוגל');
+        setLoading(false);
+      }
+    } else if (response?.type === 'error' || response?.type === 'cancel') {
+      setLoading(false);
+      if (response?.type === 'error') setErr('שגיאת התחברות בדפדפן');
+    }
+  }, [response]);
 
-      console.log('[GOOGLE] 3) getTokens...');
-      const tokens = (await GoogleSignin.getTokens()) as unknown as GoogleTokens;
-      console.log('[GOOGLE] tokens keys=', Object.keys(tokens));
-      console.log('[GOOGLE] has idToken?', Boolean(tokens.idToken));
-
-      const idToken = tokens.idToken;
+  async function handleSuccessLogin(idToken: string | undefined | null, userName: string) {
+    try {
       if (!idToken) throw new Error('חסר id_token מגוגל');
 
-      console.log('[GOOGLE] 4) calling backend googleLogin...');
-      const res = await googleLogin(idToken, 'mobile');
+      console.log('[GOOGLE] Calling backend googleLogin...');
+      const res = await googleLogin(idToken, Platform.OS === 'web' ? 'web' : 'mobile');
 
-      console.log('[GOOGLE] 5) setSession...');
-      await setSession(res.accessToken, res.refreshToken, Boolean(res.needsOnboarding));
+      console.log('[GOOGLE] Setting session for:', userName);
+      // שימוש ב-setSession המעודכן שכולל שם
+      await setSession(res.accessToken, res.refreshToken, userName, Boolean(res.needsOnboarding));
 
-      console.log('[GOOGLE] 6) navigation.reset...');
       navigation.reset({
         index: 0,
         routes: [{ name: res.needsOnboarding ? 'CreateHousehold' : 'Tabs' }],
       });
     } catch (e: any) {
-      console.log('[GOOGLE] ERROR:', e);
-      setErr(e?.message ?? String(e) ?? 'Failed');
+      setErr(e?.response?.data?.message || e?.message || 'שגיאה באימות מול השרת');
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onGoogle() {
+    setLoading(true);
+    setErr(null);
+
+    try {
+      if (Platform.OS === 'web') {
+        await promptAsync();
+      } else {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const userInfo = await GoogleSignin.signIn();
+        const tokens = await GoogleSignin.getTokens();
+
+        // שליפת השם מה-userInfo של הנייטיב
+        const name = userInfo.data?.user.name || 'משתמש גוגל';
+        await handleSuccessLogin(tokens.idToken, name);
+      }
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed');
       setLoading(false);
     }
   }
@@ -61,19 +122,23 @@ export function AuthGoogleScreen({ navigation }: any) {
       <Text style={{ fontSize: 22, fontWeight: '700' }}>התחברות</Text>
       <Text style={{ opacity: 0.8 }}>כניסה עם Google</Text>
 
-      {err ? <Text style={{ color: 'red' }}>{err}</Text> : null}
+      {err ? <Text style={{ color: 'red', fontSize: 14 }}>{err}</Text> : null}
 
       <Pressable
-        disabled={loading}
+        disabled={loading || (Platform.OS === 'web' && !request)}
         onPress={onGoogle}
         style={{
           padding: 14,
           borderRadius: 12,
           borderWidth: 1,
+          borderColor: '#ddd',
+          backgroundColor: loading ? '#f0f0f0' : 'white',
           opacity: loading ? 0.6 : 1,
         }}
       >
-        <Text style={{ textAlign: 'center' }}>{loading ? 'מתחבר...' : 'הזדהות עם Google'}</Text>
+        <Text style={{ textAlign: 'center', fontWeight: '600' }}>
+          {loading ? 'מתחבר...' : 'הזדהות עם Google'}
+        </Text>
       </Pressable>
     </View>
   );
