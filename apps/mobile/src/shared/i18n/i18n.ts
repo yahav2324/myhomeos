@@ -38,6 +38,8 @@ export const i18n = new I18n({
     currentAmountLabel: 'Current amount:',
     continue: 'Continue',
     languageRestartNote: 'Changing language may restart the app to apply RTL.',
+    shopping_lists: 'Shopping Lists',
+    shopping_list: 'Shopping List',
   },
   he: {
     settings: 'הגדרות',
@@ -75,6 +77,8 @@ export const i18n = new I18n({
     userName: 'משתמש',
     languageRestartNote: 'שינוי שפה עשוי להפעיל מחדש את האפליקציה כדי להחיל כיווניות.',
     logout: 'התנתק',
+    shopping_lists: 'רשימות קניות',
+    shopping_list: 'רשימת קניות',
   },
 });
 

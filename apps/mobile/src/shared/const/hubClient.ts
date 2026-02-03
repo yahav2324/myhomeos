@@ -1,6 +1,20 @@
-import { BleManager, Device, Characteristic } from 'react-native-ble-plx';
-import { HUB_SERVICE_UUID, HUB_CMD_CHAR_UUID, HUB_EVT_CHAR_UUID, HUB_NAME_PREFIX } from './hub';
+import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
+import { HUB_SERVICE_UUID, HUB_CMD_CHAR_UUID, HUB_EVT_CHAR_UUID, HUB_NAME_PREFIX } from './hub';
+
+// הרחבת הממשק של Navigator כדי ש-TS יזהה את Bluetooth
+declare global {
+  interface Navigator {
+    bluetooth: {
+      requestDevice(options?: any): Promise<any>;
+    };
+  }
+}
+// ייבוא מותנה: BleManager ייטען רק ב-Native כדי לא לשבור את ה-Web
+let BleManager: any;
+if (Platform.OS !== 'web') {
+  BleManager = require('react-native-ble-plx').BleManager;
+}
 
 type Listener<T> = (val: T) => void;
 
@@ -11,21 +25,7 @@ export type HubEvt =
   | { type: 'box_found'; addr: string; rssi: number; name: string }
   | { type: 'box_connected'; addr: string; boxId: string }
   | { type: 'box_disconnected' }
-  | { type: 'box_connect_failed'; addr: string; error?: string }
-  | {
-      type: 'status';
-      hubId: string;
-      uptimeMs: number;
-      wifi: 'connected' | 'disconnected';
-      ip: string;
-      phoneConnected: boolean;
-      boxConnected: boolean;
-      boxAddr: string;
-      boxId: string;
-      scanMayMissBecauseBoxConnected: boolean;
-    }
-  | { type: 'telemetry'; boxId: string; payload: unknown }
-  // fallback:
+  | { type: 'status'; [key: string]: any }
   | { type: string; [k: string]: any };
 
 function decodeBase64(b64: string) {
@@ -36,10 +36,15 @@ function encodeBase64(text: string) {
 }
 
 export class HubClient {
-  private manager = new BleManager();
-  private device: Device | null = null;
-  private cmdChar: Characteristic | null = null;
-  private evtChar: Characteristic | null = null;
+  // Native properties
+  private manager = Platform.OS !== 'web' ? new BleManager() : null;
+  private device: any = null;
+  private cmdChar: any = null;
+  private evtChar: any = null;
+
+  // Web properties (מיועד לדפדפן)
+  private webGattServer: any = null;
+  private webCmdChar: any = null;
 
   private evtListeners = new Set<Listener<HubEvt>>();
   private logListeners = new Set<Listener<string>>();
@@ -48,6 +53,7 @@ export class HubClient {
     this.evtListeners.add(cb);
     return () => this.evtListeners.delete(cb);
   }
+
   onLog(cb: Listener<string>) {
     this.logListeners.add(cb);
     return () => this.logListeners.delete(cb);
@@ -59,26 +65,48 @@ export class HubClient {
 
   async destroy() {
     try {
-      if (this.device) {
+      if (Platform.OS !== 'web' && this.device) {
         await this.device.cancelConnection();
+        this.manager.destroy();
+      } else if (this.webGattServer) {
+        this.webGattServer.disconnect();
       }
     } catch {
-      // Intentionally ignore errors during destroy
+      /* ignore */
     }
     this.device = null;
-    this.cmdChar = null;
-    this.evtChar = null;
-    this.manager.destroy();
   }
 
-  async scanForHub(timeoutMs = 8000): Promise<Device[]> {
-    const found: Device[] = [];
+  // --- סריקה ---
+  async scanForHub(timeoutMs = 8000): Promise<any[]> {
+    this.log(`Scanning for HUB (${Platform.OS})...`);
+
+    if (Platform.OS === 'web') {
+      return this.scanWeb();
+    }
+    return this.scanNative(timeoutMs);
+  }
+
+  private async scanWeb(): Promise<any[]> {
+    if (!navigator.bluetooth) throw new Error('Web Bluetooth not supported');
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: HUB_NAME_PREFIX }, { name: 'SmartKitchenHub' }],
+        optionalServices: [HUB_SERVICE_UUID.toLowerCase()],
+      });
+      return [{ id: device.id, name: device.name, rawDevice: device }];
+    } catch (e) {
+      this.log(`Web Scan Cancelled: ${e}`);
+      return [];
+    }
+  }
+
+  private async scanNative(timeoutMs: number): Promise<any[]> {
+    const found: any[] = [];
     const seen = new Set<string>();
 
-    this.log('Scanning for HUB...');
-
-    return await new Promise((resolve) => {
-      const sub = this.manager.onStateChange((state) => {
+    return new Promise((resolve) => {
+      const sub = this.manager.onStateChange((state: string) => {
         if (state !== 'PoweredOn') return;
 
         const timer = setTimeout(() => {
@@ -87,104 +115,97 @@ export class HubClient {
           resolve(found);
         }, timeoutMs);
 
-        this.manager.startDeviceScan(
-          [HUB_SERVICE_UUID],
-          { allowDuplicates: false },
-          (error, dev) => {
-            if (error) {
-              this.log(`Scan error: ${error.message}`);
-              return;
-            }
-            if (!dev) return;
-
-            const name = dev.name ?? dev.localName ?? '';
-            const isHub = name.includes(HUB_NAME_PREFIX) || name.includes('SmartKitchenHub');
-
-            if (!isHub) return;
-
-            if (!seen.has(dev.id)) {
-              seen.add(dev.id);
-              found.push(dev);
-              this.log(`Found HUB: ${name} (${dev.id})`);
-            }
-          },
-        );
-
-        // just in case stop early
-        setTimeout(() => {
-          clearTimeout(timer);
-        }, timeoutMs + 2000);
+        this.manager.startDeviceScan([HUB_SERVICE_UUID], null, (error: any, dev: any) => {
+          if (error) return;
+          if (dev && !seen.has(dev.id)) {
+            seen.add(dev.id);
+            found.push(dev);
+            this.log(`Found: ${dev.name} (${dev.id})`);
+          }
+        });
       }, true);
     });
   }
 
-  async connectToHub(deviceId: string) {
-    this.log(`Connecting to HUB deviceId=${deviceId}`);
-
-    const dev = await this.manager.connectToDevice(deviceId, { timeout: 15000 });
-    this.device = dev;
-
-    await dev.discoverAllServicesAndCharacteristics();
-
-    // Get chars
-    const services = await dev.services();
-    const hubSvc = services.find((s) => s.uuid.toLowerCase() === HUB_SERVICE_UUID);
-
-    if (!hubSvc) {
-      throw new Error('HUB service not found on device');
+  // --- התחברות ---
+  async connectToHub(deviceId: any) {
+    if (Platform.OS === 'web') {
+      return this.connectWeb(deviceId.rawDevice);
     }
+    return this.connectNative(deviceId);
+  }
 
-    const chars = await hubSvc.characteristics();
-    this.cmdChar = chars.find((c) => c.uuid.toLowerCase() === HUB_CMD_CHAR_UUID) ?? null;
-    this.evtChar = chars.find((c) => c.uuid.toLowerCase() === HUB_EVT_CHAR_UUID) ?? null;
+  private async connectWeb(device: any) {
+    this.log('Web: Connecting...');
+    this.webGattServer = await device.gatt.connect();
+    const service = await this.webGattServer.getPrimaryService(HUB_SERVICE_UUID.toLowerCase());
 
-    if (!this.cmdChar) throw new Error('HUB CMD characteristic missing');
-    if (!this.evtChar) throw new Error('HUB EVT characteristic missing');
+    this.webCmdChar = await service.getCharacteristic(HUB_CMD_CHAR_UUID.toLowerCase());
+    const notifyChar = await service.getCharacteristic(HUB_EVT_CHAR_UUID.toLowerCase());
 
-    // Subscribe notifications
-    await this.evtChar.monitor((error, ch) => {
-      if (error) {
-        this.log(`EVT monitor error: ${error.message}`);
-        return;
-      }
-      const v = ch?.value;
-      if (!v) return;
-
-      const text = decodeBase64(v);
-
-      // HUB שולח JSON (string). נטפל בזה.
-      let evt: HubEvt | null = null;
-      try {
-        evt = JSON.parse(text);
-      } catch {
-        evt = { type: 'raw', text } as any;
-      }
-
-      this.evtListeners.forEach((l) => l(evt!));
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', (event: any) => {
+      const value = event.target.value;
+      const text = new TextDecoder().decode(value);
+      this.handleIncomingJson(text);
     });
 
-    // auto status (server כבר שולח status ב-onConnect, אבל נוודא גם מהצד שלנו)
-    await this.sendCmd('status');
+    this.log('Web: Connected');
+    await this.status();
+  }
 
-    this.log('Connected & subscribed to EVT');
+  private async connectNative(deviceId: string) {
+    this.log('Native: Connecting...');
+    const dev = await this.manager.connectToDevice(deviceId);
+    this.device = dev;
+    await dev.discoverAllServicesAndCharacteristics();
+
+    const chars = await dev.characteristicsForService(HUB_SERVICE_UUID);
+    this.cmdChar = chars.find((c: any) => c.uuid.toLowerCase() === HUB_CMD_CHAR_UUID.toLowerCase());
+    this.evtChar = chars.find((c: any) => c.uuid.toLowerCase() === HUB_EVT_CHAR_UUID.toLowerCase());
+
+    await this.evtChar.monitor((err: any, ch: any) => {
+      if (ch?.value) {
+        this.handleIncomingJson(decodeBase64(ch.value));
+      }
+    });
+
+    this.log('Native: Connected');
+    await this.status();
+  }
+
+  private handleIncomingJson(text: string) {
+    try {
+      const evt = JSON.parse(text);
+      this.evtListeners.forEach((l) => l(evt));
+    } catch {
+      this.evtListeners.forEach((l) => l({ type: 'raw', text } as any));
+    }
+  }
+
+  // --- פקודות ---
+  async sendCmd(cmd: string) {
+    this.log(`CMD -> ${cmd}`);
+    if (Platform.OS === 'web') {
+      if (!this.webCmdChar) throw new Error('Web CMD char not ready');
+      await this.webCmdChar.writeValue(new TextEncoder().encode(cmd));
+    } else {
+      if (!this.cmdChar) throw new Error('Native CMD char not ready');
+      await this.cmdChar.writeWithResponse(encodeBase64(cmd));
+    }
   }
 
   async disconnectHub() {
-    if (!this.device) return;
-    this.log('Disconnecting HUB');
-    await this.device.cancelConnection();
+    if (Platform.OS === 'web') {
+      this.webGattServer?.disconnect();
+    } else {
+      await this.device?.cancelConnection();
+    }
     this.device = null;
-    this.cmdChar = null;
-    this.evtChar = null;
+    this.log('Disconnected');
   }
 
-  async sendCmd(cmd: string) {
-    if (!this.device || !this.cmdChar) throw new Error('Not connected to HUB');
-    this.log(`CMD -> ${cmd}`);
-    await this.cmdChar.writeWithResponse(encodeBase64(cmd));
-  }
-
-  // convenience
+  // Convenience
   status() {
     return this.sendCmd('status');
   }

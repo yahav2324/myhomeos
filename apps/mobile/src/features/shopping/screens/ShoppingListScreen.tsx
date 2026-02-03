@@ -136,9 +136,9 @@ function mapApiItemToUi(x: any): Item {
   };
 }
 
-function shortId(id: string) {
+function shortId(id: string, size = 10): string {
   const s = String(id ?? '');
-  if (s.length <= 10) return s;
+  if (s.length <= size) return s;
   // UUID -> show start..end
   return `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
@@ -226,7 +226,7 @@ function useBottomSheet(open: boolean) {
 ======================= */
 
 export function ShoppingListScreen({ route }: Props) {
-  const { listId } = route.params;
+  const { listId, listName } = route.params;
 
   const [items, setItems] = React.useState<Item[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -936,9 +936,9 @@ export function ShoppingListScreen({ route }: Props) {
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <AppText style={styles.title}>רשימה</AppText>
           <AppText tone="muted" style={styles.subTitle}>
-            {shortId(listId)}
+            {shortId(listId, 5)}
+            {listName ? ` — ${listName}` : ''}
           </AppText>
         </View>
 

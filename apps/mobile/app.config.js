@@ -60,6 +60,7 @@ module.exports = {
             'com.googleusercontent.apps.953054699390-sngj4c737f05rns5v0bnl9rvej804uhl',
         },
       ],
+      ['react-native-ble-plx', { isBackgroundEnabled: false, modes: ['central'] }],
     ],
   },
 };

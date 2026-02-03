@@ -162,8 +162,6 @@ export function ShoppingListsScreen(props: any) {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <AppText style={styles.title}>רשימות קניות</AppText>
-
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable
             onPress={loadLists}
