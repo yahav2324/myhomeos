@@ -10,11 +10,11 @@ import * as AuthSession from 'expo-auth-session';
 
 import { googleLogin } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
+import { importGuestToServer } from '../../shopping/offline/shopping.sync';
+import { setMeta } from '../../../shared/db/sqlite';
 
 // נדרש עבור Web כדי להשלים את תהליך האימות
 WebBrowser.maybeCompleteAuthSession();
-
-type GoogleTokens = { accessToken: string; idToken?: string };
 
 // קונפיגורציה ל-Mobile
 GoogleSignin.configure({
@@ -83,6 +83,8 @@ export function AuthGoogleScreen({ navigation }: any) {
       console.log('[GOOGLE] Setting session for:', userName);
       // שימוש ב-setSession המעודכן שכולל שם
       await setSession(res.accessToken, res.refreshToken, userName, Boolean(res.needsOnboarding));
+      await setMeta('auth.mode', 'authed');
+      await importGuestToServer();
 
       navigation.reset({
         index: 0,

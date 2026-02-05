@@ -16,15 +16,16 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Dimensions,
+  SafeAreaView,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-
 import { Card } from '../../../shared/ui/Card';
 import { AppText } from '../../../shared/ui/AppText';
 import { AppButton } from '../../../shared/ui/AppButton';
 import { theme } from '../../../shared/theme/theme';
 import type { ShoppingStackParamList } from '../navigation/shopping.stack';
+import { useShallow } from 'zustand/react/shallow';
 
 import { NameAutocompleteField } from '../../../shared/components';
 import type { PickPayload, SuggestTerm } from '../../../shared/components/NameAutocompleteField';
@@ -32,6 +33,21 @@ import { authedFetch } from '../../auth/api/auth.api';
 import { ShoppingCategory } from '@smart-kitchen/contracts';
 import { SHOPPING_CATEGORY_LABELS_HE } from '../categories';
 import { CategoryDropdown } from '../../../shared/components/categoryDropdown';
+import { Lang, t } from '../../../shared/i18n/i18n';
+import { useLangStore } from '../../../shared/i18n/lang.store';
+import {
+  ChevronUp,
+  ChevronDown,
+  RefreshCw,
+  Filter,
+  Trash,
+  CheckCircle,
+  Undo2,
+  CheckCircle2,
+} from 'lucide-react-native';
+
+import { useShoppingStore } from '../store/shopping.store';
+import { OnlineBadge } from '../../../shared/ui/OnlineBadge';
 
 /* =======================
    Types
@@ -39,18 +55,18 @@ import { CategoryDropdown } from '../../../shared/components/categoryDropdown';
 
 type Props = NativeStackScreenProps<ShoppingStackParamList, 'ShoppingList'>;
 
-type Unit = 'pcs' | 'g' | 'ml';
-type ApiUnit = 'PCS' | 'G' | 'KG' | 'ML' | 'L';
+type Unit = 'pcs' | 'g' | 'ml' | 'kg' | 'l';
 
 type ExtraKey = 'brand' | 'note' | 'priority' | 'price';
 
 type Item = {
-  id: string;
+  id: string; // localId
+  serverId?: string | null;
   termId?: string | null;
   name: string;
   quantity: number;
   unit: Unit;
-  category?: ShoppingCategory;
+  category?: ShoppingCategory | null;
   checked?: boolean;
   extras?: Record<string, string>;
 };
@@ -59,7 +75,14 @@ type Row = { kind: 'header'; id: string; title: string } | { kind: 'item'; id: s
 
 const DEFAULT_QTY = 1;
 const DEFAULT_UNIT: Unit = 'pcs';
-const UNIT_OPTIONS: Unit[] = ['pcs', 'g', 'ml'];
+const UNIT_OPTIONS: Unit[] = ['pcs', 'g', 'ml', 'kg', 'l'];
+const UNIT_I18N_KEY: Record<Unit, string> = {
+  pcs: 'unit_pcs',
+  g: 'unit_g',
+  ml: 'unit_ml',
+  kg: 'unit_kg',
+  l: 'unit_l',
+};
 
 /* =======================
    Helpers (pure)
@@ -112,58 +135,33 @@ function safeQty(qtyText: string) {
   return Math.round(n * 100) / 100;
 }
 
-function unitToApi(u: Unit): ApiUnit {
-  if (u === 'g') return 'G';
-  if (u === 'ml') return 'ML';
-  return 'PCS';
-}
-
-function mapApiItemToUi(x: any): Item {
-  const apiUnit = String(x.unit ?? 'PCS');
-  const uiUnit: Unit = apiUnit === 'G' ? 'g' : apiUnit === 'ML' ? 'ml' : 'pcs';
-
-  const cat = x.category ? (String(x.category) as ShoppingCategory) : undefined;
-
-  return {
-    id: String(x.id ?? `${Date.now()}-${Math.random()}`),
-    termId: x.termId ? String(x.termId) : null,
-    name: String(x.text ?? x.name ?? ''),
-    quantity: Number(x.qty ?? x.quantity ?? 1),
-    unit: uiUnit,
-    category: cat,
-    checked: Boolean(x.checked ?? false),
-    extras: (x.extra ?? x.extras) || undefined,
-  };
-}
-
-function shortId(id: string, size = 10): string {
-  const s = String(id ?? '');
-  if (s.length <= size) return s;
-  // UUID -> show start..end
-  return `${s.slice(0, 6)}…${s.slice(-4)}`;
-}
-
 /* =======================
-   UI helpers
+   Small UI bits
 ======================= */
 
 function UnitChips(props: { value: Unit; onChange: (u: Unit) => void }) {
   const { value, onChange } = props;
   return (
     <View style={styles.unitRow}>
-      {UNIT_OPTIONS.map((u) => (
-        <Pressable
-          key={u}
-          onPress={() => onChange(u)}
-          style={({ pressed }) => [
-            styles.unitChip,
-            value === u && styles.unitChipActive,
-            pressed && { opacity: 0.8 },
-          ]}
-        >
-          <AppText style={{ fontWeight: '900' }}>{u}</AppText>
-        </Pressable>
-      ))}
+      {UNIT_OPTIONS.map((u) => {
+        const active = value === u;
+
+        return (
+          <Pressable
+            key={u}
+            onPress={() => onChange(u)}
+            style={({ pressed }) => [
+              styles.unitChip,
+              active && styles.unitChipActive,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <AppText style={[styles.unitChipText, active && { opacity: 1 }]}>
+              {t(UNIT_I18N_KEY[u])}
+            </AppText>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -201,13 +199,12 @@ function SmallPill(props: { label: string; active?: boolean; onPress: () => void
 }
 
 /* =======================
-   Bottom Sheet (Filters)
-   - Works on Android (phone) reliably
+   Bottom Sheet helper
 ======================= */
 
 function useBottomSheet(open: boolean) {
   const { height: H } = Dimensions.get('window');
-  const sheetH = Math.min(640, Math.floor(H * 0.82));
+  const sheetH = Math.min(680, Math.floor(H * 0.84));
   const translateY = React.useRef(new Animated.Value(sheetH)).current;
 
   React.useEffect(() => {
@@ -222,17 +219,160 @@ function useBottomSheet(open: boolean) {
 }
 
 /* =======================
+   Row component
+======================= */
+
+const ItemRow = React.memo(function ItemRow(props: {
+  item: Item;
+  onOpen: (it: Item) => void;
+  onToggleChecked: (id: string, checked: boolean) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { item, onOpen, onToggleChecked, onDelete } = props;
+  const isChecked = Boolean(item.checked);
+  const price = parsePrice(item.extras);
+  const lang = useLangStore((s) => s.lang);
+  const isRTL = lang === 'he';
+  const unitKey = UNIT_I18N_KEY[(item.unit ?? 'pcs') as Unit] ?? UNIT_I18N_KEY.pcs;
+
+  return (
+    <Pressable onPress={() => onOpen(item)} style={({ pressed }) => [pressed && { opacity: 0.92 }]}>
+      <Card style={{ alignItems: 'stretch', justifyContent: 'flex-start' }}>
+        <View style={styles.itemRow}>
+          <View style={styles.textCol}>
+            <AppText
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[
+                styles.itemNameInline,
+                isRTL ? styles.textRTL : styles.textLTR,
+                isChecked && styles.itemNameChecked,
+              ]}
+            >
+              {item.name}
+            </AppText>
+
+            <AppText
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              tone="muted"
+              style={[styles.itemMetaInline, isRTL ? styles.textRTL : styles.textLTR]}
+            >
+              {/* {item.category
+                ? `קטגוריה: ${SHOPPING_CATEGORY_LABELS_HE[item.category] ?? item.category}`
+                : ''} */}
+              {/* {item.extras ? ` • פרטים: ${Object.keys(item.extras).length}` : ''} */}
+              {price != null ? ` •מחיר: ${price} ${isRTL ? '₪' : '$'}` : ''}
+            </AppText>
+          </View>
+
+          <View style={[styles.controlsRow, isRTL && styles.controlsRowRTL]}>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete(item.id);
+              }}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+            >
+              <AppText style={styles.iconBtnText}>
+                {<Trash size={18} color={theme.colors.text} />}
+              </AppText>
+            </Pressable>
+
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onToggleChecked(item.id, !isChecked);
+              }}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+            >
+              <AppText style={styles.iconBtnText}>
+                {isChecked ? (
+                  <Undo2 size={18} color={theme.colors.text} />
+                ) : (
+                  <CheckCircle size={18} color={theme.colors.text} />
+                )}
+              </AppText>
+            </Pressable>
+
+            <View style={styles.qtyBadge}>
+              <AppText style={[styles.qtyBadgeText, isRTL ? styles.textRTL : styles.textLTR]}>
+                {item.quantity} {t(unitKey)}
+              </AppText>
+            </View>
+          </View>
+        </View>
+      </Card>
+    </Pressable>
+  );
+});
+
+/* =======================
    Screen
 ======================= */
 
 export function ShoppingListScreen({ route }: Props) {
-  const { listId, listName } = route.params;
+  const { listLocalId, listName } = route.params;
 
-  const [items, setItems] = React.useState<Item[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
+  const lang = useLangStore((s) => s.lang as Lang);
+  const isRTL = lang === 'he';
 
-  // ✅ show/hide quick add
+  const {
+    lists,
+    itemsByListLocalId,
+    loading,
+    saving,
+    lastError,
+    refreshLists,
+    refreshItems,
+    addItem,
+    updateItem,
+    deleteItem,
+    trySync,
+  } = useShoppingStore(
+    useShallow((s) => ({
+      lists: s.lists,
+      itemsByListLocalId: s.itemsByListLocalId,
+      loading: s.loading,
+      saving: s.saving,
+      lastError: s.lastError,
+      refreshLists: s.refreshLists,
+      refreshItems: s.refreshItems,
+      addItem: s.addItem,
+      updateItem: s.updateItem,
+      deleteItem: s.deleteItem,
+      trySync: s.trySync,
+    })),
+  );
+
+  const list = React.useMemo(
+    () => lists.find((x) => x.localId === listLocalId) ?? null,
+    [lists, listLocalId],
+  );
+
+  const localItems = itemsByListLocalId[listLocalId] ?? [];
+  const items: Item[] = React.useMemo(
+    () =>
+      localItems.map((x) => {
+        const rawUnit = String(x.unit ?? '').toLowerCase();
+        const unit: Unit = (UNIT_OPTIONS as string[]).includes(rawUnit) ? (rawUnit as Unit) : 'pcs';
+
+        return {
+          id: x.localId,
+          serverId: x.serverId,
+          termId: x.termId ?? null,
+          name: x.text,
+          quantity: x.qty,
+          unit,
+          category: (x.category as any) ?? null,
+          checked: x.checked,
+          extras: (x.extra as any) ?? undefined,
+        };
+      }),
+    [localItems],
+  );
+
+  // quick add visibility
   const [showQuickAdd, setShowQuickAdd] = React.useState(true);
 
   // filters
@@ -249,7 +389,7 @@ export function ShoppingListScreen({ route }: Props) {
   const priceMin = React.useMemo(() => toNumberOrNull(priceMinText), [priceMinText]);
   const priceMax = React.useMemo(() => toNumberOrNull(priceMaxText), [priceMaxText]);
 
-  // quick add
+  // quick add fields
   const [name, setName] = React.useState('');
   const [qty, setQty] = React.useState(String(DEFAULT_QTY));
   const [unit, setUnit] = React.useState<Unit>(DEFAULT_UNIT);
@@ -274,8 +414,8 @@ export function ShoppingListScreen({ route }: Props) {
   const [editExtraKeys, setEditExtraKeys] = React.useState<ExtraKey[]>([]);
 
   /* =======================
-     Quick Add drag expand/collapse
-======================= */
+     Quick Add expand/collapse (drag)
+  ======================= */
 
   const [quickAddExpanded, setQuickAddExpanded] = React.useState(false);
 
@@ -285,14 +425,13 @@ export function ShoppingListScreen({ route }: Props) {
 
   const setExpandedFromHeight = React.useCallback((h: number) => {
     const max = extraMaxHRef.current || 1;
-    setQuickAddExpanded(h > max * 0.15);
+    setQuickAddExpanded(h > max * 0.18);
   }, []);
 
   const snapExtraTo = React.useCallback(
     (open: boolean) => {
       const max = extraMaxHRef.current || 0;
       setQuickAddExpanded(open);
-
       Animated.spring(extraH, {
         toValue: open ? max : 0,
         useNativeDriver: false,
@@ -326,7 +465,6 @@ export function ShoppingListScreen({ route }: Props) {
         onPanResponderRelease: (_e, g) => {
           extraH.stopAnimation((val: number) => {
             const max = extraMaxHRef.current || 1;
-            // dy positive = drag down -> close ; dy negative = drag up -> open
             const shouldOpen = g.vy < -0.7 || val > max * 0.5;
             snapExtraTo(shouldOpen);
           });
@@ -342,7 +480,7 @@ export function ShoppingListScreen({ route }: Props) {
     [extraH, panRef, setExpandedFromHeight, snapExtraTo],
   );
 
-  // web pointer support
+  // web pointer support (drag handle only)
   const webDrag = React.useRef({ dragging: false, startY: 0, startH: 0 }).current;
 
   const webHandlers = React.useMemo(() => {
@@ -380,14 +518,13 @@ export function ShoppingListScreen({ route }: Props) {
     const onMove = (clientY: number, ev: any) => {
       if (!webDrag.dragging) return;
       ev.preventDefault?.();
-
       const dy = clientY - webDrag.startY;
       const next = clamp(webDrag.startH + dy, 0, extraMaxHRef.current);
       extraH.setValue(next);
       setExpandedFromHeight(next);
     };
 
-    const onUp = (clientY: number, ev: any) => {
+    const onUp = (_clientY: number, ev: any) => {
       if (!webDrag.dragging) return;
       ev.preventDefault?.();
       webDrag.dragging = false;
@@ -401,15 +538,11 @@ export function ShoppingListScreen({ route }: Props) {
 
     const pm = (e: PointerEvent) => onMove(e.clientY, e);
     const pu = (e: PointerEvent) => onUp(e.clientY, e);
-
     const tm = (e: TouchEvent) => {
       const t = e.touches?.[0];
       if (t) onMove(t.clientY, e);
     };
-    const te = (e: TouchEvent) => {
-      const t = e.changedTouches?.[0];
-      onUp(t?.clientY ?? webDrag.startY, e);
-    };
+    const te = (e: TouchEvent) => onUp(e.changedTouches?.[0]?.clientY ?? webDrag.startY, e);
 
     window.addEventListener('pointermove', pm, { passive: false });
     window.addEventListener('pointerup', pu, { passive: false });
@@ -426,7 +559,7 @@ export function ShoppingListScreen({ route }: Props) {
 
   /* =======================
      Extras helpers
-======================= */
+  ======================= */
 
   const resetExtras = React.useCallback(() => {
     setExtras({});
@@ -448,38 +581,24 @@ export function ShoppingListScreen({ route }: Props) {
   }, []);
 
   /* =======================
-     Load
-======================= */
+     Load (SQLite)
+  ======================= */
 
-  const loadItems = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await authedFetch(`/shopping/lists/${encodeURIComponent(listId)}/items`, {
-        method: 'GET',
-      });
-
-      if (!res.ok) {
-        console.log('loadItems failed', res.status, await res.text().catch(() => ''));
-        return;
-      }
-
-      const json = await res.json();
-      const arr = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-      setItems(arr.map(mapApiItemToUi));
-    } finally {
-      setLoading(false);
-    }
-  }, [listId]);
+  const load = React.useCallback(async () => {
+    await refreshLists();
+    await refreshItems(listLocalId);
+    void trySync();
+  }, [refreshLists, refreshItems, listLocalId, trySync]);
 
   useFocusEffect(
     React.useCallback(() => {
-      loadItems();
-    }, [loadItems]),
+      void load();
+    }, [load]),
   );
 
   /* =======================
      Derived
-======================= */
+  ======================= */
 
   const allCategories = React.useMemo(() => {
     const s = new Set<ShoppingCategory>();
@@ -493,6 +612,11 @@ export function ShoppingListScreen({ route }: Props) {
     return { min: Math.min(...nums), max: Math.max(...nums), has: true };
   }, [items]);
 
+  const canSaveDetails = React.useMemo(() => {
+    if (extraKeys.length === 0) return true;
+    return extraKeys.every((k) => (extras[k] ?? '').trim().length > 0);
+  }, [extraKeys, extras]);
+
   const filteredItems = React.useMemo(() => {
     let out = [...items].sort(sortUncheckedFirst);
 
@@ -501,7 +625,6 @@ export function ShoppingListScreen({ route }: Props) {
     }
 
     if (hideChecked) out = out.filter((x) => !x.checked);
-
     if (onlyWithPrice) out = out.filter((x) => parsePrice(x.extras) != null);
 
     if (priceMin != null || priceMax != null) {
@@ -557,9 +680,16 @@ export function ShoppingListScreen({ route }: Props) {
     setSelectedCategories((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]));
   }, []);
 
+  const counts = React.useMemo(() => {
+    const total = items.length;
+    const checked = items.filter((x) => x.checked).length;
+    const visible = filteredItems.length;
+    return { total, checked, visible };
+  }, [items, filteredItems]);
+
   /* =======================
      Duplicate guard
-======================= */
+  ======================= */
 
   const wouldDuplicate = React.useCallback(
     (nextText: string, nextTermId?: string | null) => {
@@ -573,66 +703,59 @@ export function ShoppingListScreen({ route }: Props) {
   );
 
   /* =======================
-     Add (ONLY by button)
-======================= */
+     Add (SQLite-first)
+  ======================= */
 
   const onAdd = React.useCallback(async () => {
+    if (!list) return;
+
     const text = name.trim();
     if (!text || saving) return;
 
-    if (wouldDuplicate(text, selectedTermId)) return;
-
-    setSaving(true);
-    try {
-      const res = await authedFetch(`/shopping/lists/${encodeURIComponent(listId)}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          termId: selectedTermId ?? undefined,
-          qty: safeQty(qty),
-          unit: unitToApi(unit),
-          category: category ?? undefined,
-          extra: Object.keys(extras).length ? extras : undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        console.log('addItem failed', res.status, await res.text().catch(() => ''));
-        return;
-      }
-
-      setName('');
-      setQty(String(DEFAULT_QTY));
-      setUnit(DEFAULT_UNIT);
-      setCategory(null);
-      setSelectedTermId(null);
-      resetExtras();
-      setDetailsOpen(false);
-
-      snapExtraTo(false);
-      await loadItems();
-    } finally {
-      setSaving(false);
+    if (!canSaveDetails) {
+      setDetailsOpen(true);
+      return;
     }
+
+    if (wouldDuplicate(text, selectedTermId)) return;
+    console.log('[onAdd] unit=', unit, 'qty=', qty, 'name=', name);
+
+    await addItem(list, {
+      text,
+      termId: selectedTermId ?? null,
+      qty: safeQty(qty),
+      unit,
+      category,
+      extra: Object.keys(extras).length ? extras : null,
+    });
+
+    setName('');
+    setQty(String(DEFAULT_QTY));
+    setUnit(DEFAULT_UNIT);
+    setCategory(null);
+    setSelectedTermId(null);
+    resetExtras();
+    setDetailsOpen(false);
+    snapExtraTo(false);
   }, [
+    list,
     name,
     saving,
+    canSaveDetails,
     wouldDuplicate,
     selectedTermId,
-    listId,
     qty,
     unit,
     category,
     extras,
+    addItem,
     resetExtras,
-    loadItems,
     snapExtraTo,
   ]);
 
   /* =======================
-     Autocomplete (NO add)
-======================= */
+     Autocomplete (server optional)
+  ======================= */
 
   const onPick = React.useCallback((p: PickPayload) => {
     setName(p.text);
@@ -643,112 +766,77 @@ export function ShoppingListScreen({ route }: Props) {
     async (q: string, lang: string): Promise<SuggestTerm[]> => {
       const query = q.trim();
       if (!query) return [];
-
-      const res = await authedFetch(
-        `/terms/suggest?lang=${encodeURIComponent(lang)}&q=${encodeURIComponent(query)}&limit=10`,
-        { method: 'GET' },
-      );
-
-      if (!res.ok) return [];
-
-      const json = (await res.json()) as any;
-      const arr = Array.isArray(json?.data) ? json.data : [];
-
-      return (arr as any[]).map((x) => ({
-        termId: String(x.termId ?? x.id),
-        text: String(x.text ?? x.name ?? ''),
-        status: (x.status ?? 'PENDING') as SuggestTerm['status'],
-        upCount: Number(x.upCount ?? 0),
-        downCount: Number(x.downCount ?? 0),
-        myVote: (x.myVote ?? null) as SuggestTerm['myVote'],
-      })) as SuggestTerm[];
+      try {
+        const res = await authedFetch(
+          `/terms/suggest?lang=${encodeURIComponent(lang)}&q=${encodeURIComponent(query)}&limit=10`,
+          { method: 'GET' },
+        );
+        if (!res.ok) return [];
+        const json = (await res.json()) as any;
+        const arr = Array.isArray(json?.data) ? json.data : [];
+        return (arr as any[]).map((x) => ({
+          termId: String(x.termId ?? x.id),
+          text: String(x.text ?? x.name ?? ''),
+          status: (x.status ?? 'PENDING') as SuggestTerm['status'],
+          upCount: Number(x.upCount ?? 0),
+          downCount: Number(x.downCount ?? 0),
+          myVote: (x.myVote ?? null) as SuggestTerm['myVote'],
+        })) as SuggestTerm[];
+      } catch {
+        return [];
+      }
     },
     [],
   );
 
   const onCreateNew = React.useCallback(async (text: string, lang: string) => {
-    const t = text.trim();
-    if (!t) return;
-
-    await authedFetch(`/terms`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: t, lang }),
-    }).catch(() => {});
+    const v = text.trim();
+    if (!v) return;
+    try {
+      await authedFetch('/terms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: v, lang }),
+      });
+    } catch {
+      /* empty */
+    }
   }, []);
 
   const onVote = React.useCallback(async (termId: string, vote: 'UP' | 'DOWN') => {
-    await authedFetch(`/terms/${encodeURIComponent(termId)}/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vote }),
-    }).catch(() => {});
+    try {
+      await authedFetch(`/terms/${encodeURIComponent(termId)}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vote }),
+      });
+    } catch {
+      /* empty */
+    }
   }, []);
 
   /* =======================
-     Item ops
-======================= */
+     Item ops (SQLite-first)
+  ======================= */
 
-  const deleteItem = React.useCallback(
-    async (itemId: string) => {
-      let prev: Item[] = [];
-      setItems((curr) => {
-        prev = curr;
-        return curr.filter((x) => x.id !== itemId);
-      });
-
-      try {
-        const res = await authedFetch(
-          `/shopping/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}`,
-          { method: 'DELETE' },
-        );
-
-        if (!res.ok) {
-          console.log('deleteItem failed', res.status, await res.text().catch(() => ''));
-          setItems(prev);
-          return;
-        }
-
-        await loadItems();
-      } catch (e) {
-        console.log('deleteItem error', e);
-        setItems(prev);
-      }
+  const deleteOne = React.useCallback(
+    async (itemLocalId: string) => {
+      if (!list) return;
+      const it = localItems.find((x) => x.localId === itemLocalId);
+      if (!it) return;
+      await deleteItem(list, it as any);
     },
-    [listId, loadItems],
+    [list, localItems, deleteItem],
   );
 
   const setChecked = React.useCallback(
-    async (itemId: string, checked: boolean) => {
-      let prev: Item[] = [];
-      setItems((curr) => {
-        prev = curr;
-        return curr.map((x) => (x.id === itemId ? { ...x, checked } : x));
-      });
-
-      try {
-        const res = await authedFetch(
-          `/shopping/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}/checked`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ checked }),
-          },
-        );
-
-        if (!res.ok) {
-          console.log('setChecked failed', res.status, await res.text().catch(() => ''));
-          setItems(prev);
-          return;
-        }
-
-        await loadItems();
-      } catch (e) {
-        console.log('setChecked error', e);
-        setItems(prev);
-      }
+    async (itemLocalId: string, checked: boolean) => {
+      if (!list) return;
+      const it = localItems.find((x) => x.localId === itemLocalId);
+      if (!it) return;
+      await updateItem(list, it as any, { checked });
     },
-    [listId, loadItems],
+    [list, localItems, updateItem],
   );
 
   const openItem = React.useCallback((it: Item) => {
@@ -758,7 +846,7 @@ export function ShoppingListScreen({ route }: Props) {
     setEditName(it.name ?? '');
     setEditQty(String(it.quantity ?? DEFAULT_QTY));
     setEditUnit(it.unit ?? DEFAULT_UNIT);
-    setEditCategory(it.category ?? null);
+    setEditCategory((it.category as any) ?? null);
 
     const ex = it.extras ?? {};
     setEditExtras(ex);
@@ -771,9 +859,16 @@ export function ShoppingListScreen({ route }: Props) {
     setItemOpen(false);
     setActiveItem(null);
   }, []);
+  const listRef = React.useRef<FlatList<any>>(null);
+  const [showBackToAdd, setShowBackToAdd] = React.useState(false);
+
+  const canSaveEditDetails = React.useMemo(() => {
+    if (editExtraKeys.length === 0) return true;
+    return editExtraKeys.every((k) => (editExtras[k] ?? '').trim().length > 0);
+  }, [editExtraKeys, editExtras]);
 
   const saveActiveEdits = React.useCallback(async () => {
-    if (!activeItem || saving) return;
+    if (!list || !activeItem || saving) return;
 
     const nextText = editName.trim();
     if (!nextText) return;
@@ -787,52 +882,37 @@ export function ShoppingListScreen({ route }: Props) {
 
     if (dup) return;
 
-    setSaving(true);
-    try {
-      const payload: any = {
-        text: nextText,
-        qty: safeQty(editQty),
-        unit: unitToApi(editUnit),
-        category: editCategory ?? null,
-        extra: Object.keys(editExtras).length ? editExtras : null,
-      };
+    const it = localItems.find((x) => x.localId === activeItem.id);
+    if (!it) return;
 
-      const res = await authedFetch(
-        `/shopping/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(activeItem.id)}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        },
-      );
+    await updateItem(list, it as any, {
+      text: nextText,
+      qty: safeQty(editQty),
+      unit: editUnit,
+      category: editCategory ?? null,
+      extra: Object.keys(editExtras).length ? editExtras : null,
+    });
 
-      if (!res.ok) {
-        console.log('updateItem failed', res.status, await res.text().catch(() => ''));
-        return;
-      }
-
-      await loadItems();
-      closeItem();
-    } finally {
-      setSaving(false);
-    }
+    closeItem();
   }, [
+    list,
     activeItem,
     saving,
-    listId,
     editName,
     editQty,
     editUnit,
     editCategory,
     editExtras,
-    loadItems,
-    closeItem,
     items,
+    localItems,
+    updateItem,
+    closeItem,
   ]);
 
   /* =======================
      Filters actions
-======================= */
+  ======================= */
+  const [overlayActive, setOverlayActive] = React.useState(false);
 
   const resetAllFilters = React.useCallback(() => {
     setSelectedCategories([]);
@@ -852,11 +932,10 @@ export function ShoppingListScreen({ route }: Props) {
     priceMax != null;
 
   /* =======================
-     Filters Bottom Sheet impl
-======================= */
+     Filters Bottom Sheet
+  ======================= */
 
   const { sheetH, translateY } = useBottomSheet(filtersOpen);
-
   const closeFilters = React.useCallback(() => setFiltersOpen(false), []);
 
   const sheetPan = React.useMemo(
@@ -865,7 +944,6 @@ export function ShoppingListScreen({ route }: Props) {
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 6,
         onPanResponderMove: (_e, g) => {
-          // drag down to close
           const y = clamp(g.dy, 0, sheetH);
           translateY.setValue(y);
         },
@@ -884,698 +962,812 @@ export function ShoppingListScreen({ route }: Props) {
   );
 
   const ExtraContent = React.useCallback(
-    () => (
+    ({ measureOnly }: { measureOnly?: boolean }) => (
       <>
-        <CategoryDropdown value={category} onChange={setCategory} label="קטגוריה" />
+        <View style={styles.sectionBlock}>
+          <CategoryDropdown
+            measureOnly={measureOnly}
+            isRTL={isRTL}
+            value={category}
+            onChange={setCategory}
+            onOpenChange={(isOpen) => {
+              setOverlayActive(isOpen);
+              snapExtraTo(false);
+            }}
+            label="קטגוריה"
+          />
+        </View>
 
-        <AppText tone="muted" style={{ marginTop: 8 }}>
-          יחידה
-        </AppText>
-        <UnitChips value={unit} onChange={setUnit} />
+        <View style={styles.sectionBlock}>
+          <AppText
+            tone="muted"
+            style={[styles.sectionLabel, isRTL ? styles.textRTL : styles.textLTR]}
+          >
+            יחידה
+          </AppText>
+          <UnitChips value={unit} onChange={setUnit} />
+        </View>
 
-        <TextInput
-          value={qty}
-          onChangeText={setQty}
-          keyboardType="numeric"
-          placeholder="כמות"
-          placeholderTextColor={theme.colors.muted}
-          style={styles.input}
-        />
+        <View style={styles.sectionBlock}>
+          <AppText
+            tone="muted"
+            style={[styles.sectionLabel, isRTL ? styles.textRTL : styles.textLTR]}
+          >
+            כמות
+          </AppText>
+          <TextInput
+            value={qty}
+            onChangeText={setQty}
+            keyboardType="numeric"
+            placeholder="כמות"
+            placeholderTextColor={theme.colors.muted}
+            style={[styles.input, isRTL ? styles.textInputRTL : styles.textInputLTR]}
+          />
+        </View>
 
-        <View style={styles.rowGap}>
-          <AppButton title="פרטים נוספים" variant="ghost" onPress={() => setDetailsOpen(true)} />
+        <View style={[styles.rowGap, { marginTop: 6, marginBottom: 6 }]}>
+          <Pressable
+            onPress={() => setDetailsOpen(true)}
+            style={({ pressed }) => [styles.moreDetailsBtn, pressed && { opacity: 0.9 }]}
+          >
+            <AppText style={styles.moreDetailsText}>פרטים נוספים</AppText>
+            {extraKeys.length > 0 ? <View style={styles.moreDetailsDot} /> : null}
+          </Pressable>
         </View>
 
         {name.trim() && wouldDuplicate(name.trim(), selectedTermId) ? (
-          <AppText tone="muted" style={{ marginTop: 6 }}>
-            הפריט כבר קיים ברשימה (לא נוסיף כפול)
-          </AppText>
+          <View style={styles.dupNotice}>
+            <AppText tone="muted" style={{ fontWeight: '800' }}>
+              הפריט כבר קיים ברשימה (לא נוסיף כפול)
+            </AppText>
+          </View>
         ) : null}
       </>
     ),
-    [
-      category,
-      setCategory,
-      unit,
-      setUnit,
-      qty,
-      setQty,
-      setDetailsOpen,
-      name,
-      wouldDuplicate,
-      selectedTermId,
-    ],
+    [category, unit, qty, isRTL, extraKeys.length, name, wouldDuplicate, selectedTermId],
   );
 
-  /* =======================
-     Render
-======================= */
+  const ListHeader = React.useMemo(() => {
+    return (
+      <View style={[styles.headerWrap]}>
+        {lastError ? (
+          <View style={{ paddingBottom: 10 }}>
+            <AppText tone="muted" style={{ fontWeight: '900' }}>
+              {lastError}
+            </AppText>
+          </View>
+        ) : null}
 
-  return (
-    <View style={styles.screen}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
-          <AppText tone="muted" style={styles.subTitle}>
-            {shortId(listId, 5)}
-            {listName ? ` — ${listName}` : ''}
-          </AppText>
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextCol}>
+            <AppText style={[styles.title, isRTL ? styles.textRTL : styles.textLTR]}>
+              {list?.name ?? listName ?? 'רשימת קניות'}
+            </AppText>
+            <AppText
+              tone="muted"
+              style={[styles.subTitle, isRTL ? styles.textRTL : styles.textLTR]}
+            >
+              • {t('total', { total: counts.total })} •{' '}
+              {t('purchased', { checked: counts.checked })}
+            </AppText>
+          </View>
+
+          <View style={[styles.headerActions, isRTL && styles.headerActionsRTL]}>
+            <OnlineBadge compact />
+            <Pressable onPress={() => setFiltersOpen(true)} style={styles.headerBtn}>
+              <AppText style={styles.headerBtnText}>
+                {<Filter size={18} color={theme.colors.text} />}
+              </AppText>
+            </Pressable>
+
+            <Pressable onPress={load} style={styles.headerBtnGhost}>
+              <AppText style={styles.headerBtnText}>
+                {<RefreshCw size={18} color={theme.colors.text} />}
+              </AppText>
+            </Pressable>
+          </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <AppButton
-            title={showQuickAdd ? 'רק רשימה' : 'הצג הוספה'}
-            variant="ghost"
-            onPress={() => setShowQuickAdd((x) => !x)}
-          />
-        </View>
-      </View>
-
-      {/* Compact control bar (mobile friendly) */}
-      <View style={styles.controlBar}>
-        <Pressable
-          onPress={() => setFiltersOpen(true)}
-          style={({ pressed }) => [styles.controlBtn, pressed && { opacity: 0.85 }]}
-        >
-          <AppText style={styles.controlBtnText}>{filtersActive ? 'פילטרים ✓' : 'פילטרים'}</AppText>
-        </Pressable>
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* <SmallPill
-            label={groupByCategory ? 'קיבוץ ✓' : 'קיבוץ'}
-            active={groupByCategory}
-            onPress={() => setGroupByCategory((x) => !x)}
-          />
-          <SmallPill
-            label={hideChecked ? 'הסתר ✓' : 'הסתר'}
-            active={hideChecked}
-            onPress={() => setHideChecked((x) => !x)}
-          /> */}
+        <View style={[styles.topControls, isRTL && styles.topControlsRTL]}>
           <Pressable
-            onPress={loadItems}
-            style={({ pressed }) => [styles.controlBtnGhost, pressed && { opacity: 0.85 }]}
+            onPress={() => setShowQuickAdd((x) => !x)}
+            style={({ pressed }) => [styles.toggleQuickAdd, pressed && { opacity: 0.88 }]}
           >
-            <AppText style={styles.controlBtnText}>רענן</AppText>
+            <AppText style={styles.toggleQuickAddText}>
+              {showQuickAdd ? t('listOnly') : t('addToList')}
+            </AppText>
           </Pressable>
         </View>
-      </View>
 
-      {/* Quick add */}
-      {showQuickAdd ? (
-        <Card style={[styles.cardTop, styles.quickAddCardFix]}>
-          <AppText style={styles.cardTitle}>הוספה מהירה</AppText>
-
-          <View style={[styles.formGap, styles.autocompleteLayer]}>
-            <NameAutocompleteField
-              label="שם פריט"
-              value={name}
-              onChangeText={(t) => {
-                setName(t);
-                setSelectedTermId(null);
-              }}
-              placeholder="למשל: מלפפון"
-              minChars={2}
-              lang="he"
-              fetchSuggest={fetchSuggest}
-              onCreateNew={onCreateNew}
-              onVote={onVote}
-              onPick={onPick}
-            />
-
-            {/* Buttons always visible */}
-            <View style={[styles.rowGap, { marginTop: 12 }]}>
-              <AppButton
-                title={quickAddExpanded ? 'צמצם' : 'הרחב'}
-                variant="ghost"
-                onPress={() => snapExtraTo(!quickAddExpanded)}
-              />
-              <AppButton
-                title={saving ? 'מוסיף…' : 'הוסף'}
-                onPress={onAdd}
-                disabled={!name.trim() || saving || wouldDuplicate(name.trim(), selectedTermId)}
-              />
-            </View>
-
-            {/* Extra section */}
-            {/* Extra section (measure + visible) */}
-
-            {/* 1) hidden measure OUTSIDE the animated container */}
+        {showQuickAdd ? (
+          <Card style={[styles.cardTop, styles.quickAddCardFix]}>
             <View
-              pointerEvents="none"
-              style={styles.extraMeasureBox}
-              onLayout={(e) => {
-                const h = Math.ceil(e.nativeEvent.layout.height);
-                if (h > 0 && h !== extraMaxHRef.current) {
-                  extraMaxHRef.current = h;
-
-                  // אם כבר פתוח — לסנכרן לגובה החדש
-                  extraH.stopAnimation((val: number) => {
-                    if (val > 0.01) extraH.setValue(h);
-                  });
-                }
-              }}
+              style={[styles.quickAddHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             >
-              <ExtraContent />
-            </View>
+              <AppText style={[styles.cardTitle, { flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                {t('quickAddTitle')}
+              </AppText>
 
-            {/* 2) visible animated container */}
-            <Animated.View style={{ height: extraH, overflow: 'hidden', marginTop: 10 }}>
-              <View>
-                <ExtraContent />
-              </View>
-            </Animated.View>
-          </View>
-
-          {/* Grabber */}
-          <View
-            style={[styles.grabberBottomWrap, Platform.OS === 'web' && styles.grabberWebNoScroll]}
-            {...(Platform.OS === 'web' ? (webHandlers as any) : grabberPan.panHandlers)}
-          >
-            <View style={styles.grabber} />
-          </View>
-        </Card>
-      ) : null}
-
-      {/* Loading */}
-      {loading ? (
-        <View style={{ marginTop: theme.space.lg, alignItems: 'center' }}>
-          <ActivityIndicator />
-          <AppText tone="muted" style={{ marginTop: 8 }}>
-            טוען…
-          </AppText>
-        </View>
-      ) : null}
-
-      {/* List */}
-      <FlatList
-        style={styles.list}
-        data={rows}
-        keyExtractor={(x) => x.id}
-        contentContainerStyle={styles.listContent}
-        keyboardShouldPersistTaps="handled"
-        renderItem={({ item: row }) => {
-          if (row.kind === 'header') {
-            return (
-              <View style={styles.groupHeader}>
-                <AppText style={styles.groupHeaderText}>{row.title}</AppText>
-              </View>
-            );
-          }
-
-          const item = row.item;
-          const isChecked = Boolean(item.checked);
-
-          return (
-            <Pressable onPress={() => openItem(item)}>
-              <Card>
-                <View style={styles.itemTopRow}>
-                  <AppText style={[styles.itemName, isChecked && { opacity: 0.6 }]}>
-                    {item.name}
-                  </AppText>
-                  <AppText tone="muted">
-                    {item.quantity} {item.unit}
-                  </AppText>
-                </View>
-
-                <View style={styles.itemMetaRow}>
-                  <View style={{ flex: 1, gap: 4 }}>
-                    {item.category ? (
-                      <AppText tone="muted">
-                        קטגוריה: {SHOPPING_CATEGORY_LABELS_HE[item.category] ?? item.category}
-                      </AppText>
-                    ) : (
-                      <AppText tone="muted">קטגוריה: ללא</AppText>
-                    )}
-
-                    <AppText tone="muted" numberOfLines={1}>
-                      {item.extras
-                        ? `פרטים: ${Object.keys(item.extras).length}`
-                        : 'אין פרטים נוספים'}
-                    </AppText>
-
-                    {parsePrice(item.extras) != null ? (
-                      <AppText tone="muted">מחיר: {parsePrice(item.extras)}</AppText>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.itemActionsInline}>
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        setChecked(item.id, !isChecked);
-                      }}
-                      style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-                    >
-                      <AppText style={styles.iconBtnText}>{isChecked ? '↩' : '✓'}</AppText>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        deleteItem(item.id);
-                      }}
-                      style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-                    >
-                      <AppText style={styles.iconBtnText}>🗑</AppText>
-                    </Pressable>
-                  </View>
-                </View>
-              </Card>
-            </Pressable>
-          );
-        }}
-      />
-
-      {/* Filters Bottom Sheet */}
-      <Modal
-        visible={filtersOpen}
-        transparent
-        animationType="none"
-        onRequestClose={closeFilters}
-        presentationStyle="overFullScreen"
-      >
-        <View style={styles.sheetBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeFilters} />
-
-          <Animated.View
-            style={[styles.sheet, { height: sheetH, transform: [{ translateY }] }]}
-            {...sheetPan.panHandlers}
-          >
-            <View style={styles.sheetHandleWrap}>
-              <View style={styles.sheetHandle} />
-            </View>
-
-            <View style={styles.sheetHeader}>
-              <AppText style={styles.sheetTitle}>פילטרים</AppText>
-
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Pressable
-                  onPress={() => {
-                    resetAllFilters();
-                  }}
-                  style={({ pressed }) => [styles.sheetHeaderBtn, pressed && { opacity: 0.85 }]}
-                >
-                  <AppText style={{ fontWeight: '900' }}>איפוס</AppText>
-                </Pressable>
-
-                <Pressable
-                  onPress={closeFilters}
-                  style={({ pressed }) => [styles.sheetHeaderBtn, pressed && { opacity: 0.85 }]}
-                >
-                  <AppText style={{ fontWeight: '900' }}>סגור</AppText>
-                </Pressable>
-              </View>
-            </View>
-
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={{ flex: 1 }}
-            >
-              <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingBottom: 24 }}
-                keyboardShouldPersistTaps="handled"
+              <Pressable
+                onPress={() => snapExtraTo(!quickAddExpanded)}
+                style={[styles.expandBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
               >
-                <View style={styles.sheetSection}>
-                  <AppText tone="muted" style={styles.sectionTitle}>
-                    כללי
-                  </AppText>
-
-                  <View style={styles.rowGap}>
-                    <AppButton
-                      title={groupByCategory ? 'קיבוץ לפי קטגוריה ✓' : 'קיבוץ לפי קטגוריה'}
-                      variant="ghost"
-                      onPress={() => setGroupByCategory((x) => !x)}
-                    />
-                    <AppButton
-                      title={hideChecked ? 'הסתר נרכשו ✓' : 'הסתר נרכשו'}
-                      variant="ghost"
-                      onPress={() => setHideChecked((x) => !x)}
-                    />
-                  </View>
-
-                  <View style={[styles.rowGap, { marginTop: 10 }]}>
-                    <AppButton
-                      title={onlyWithPrice ? 'רק עם מחיר ✓' : 'רק עם מחיר'}
-                      variant="ghost"
-                      onPress={() => setOnlyWithPrice((x) => !x)}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.sheetSection}>
-                  <AppText tone="muted" style={styles.sectionTitle}>
-                    מחיר
-                    {priceStats.has
-                      ? ` (קיים: ${priceStats.min}–${priceStats.max})`
-                      : ' (אין עדיין מחירים)'}
-                  </AppText>
-
-                  <View style={[styles.rowGap, { marginTop: 8 }]}>
-                    <TextInput
-                      value={priceMinText}
-                      onChangeText={setPriceMinText}
-                      keyboardType="numeric"
-                      placeholder="מינימום"
-                      placeholderTextColor={theme.colors.muted}
-                      style={[styles.input, { flex: 1 }]}
-                    />
-                    <TextInput
-                      value={priceMaxText}
-                      onChangeText={setPriceMaxText}
-                      keyboardType="numeric"
-                      placeholder="מקסימום"
-                      placeholderTextColor={theme.colors.muted}
-                      style={[styles.input, { flex: 1 }]}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.sheetSection}>
-                  <AppText tone="muted" style={styles.sectionTitle}>
-                    קטגוריות
-                  </AppText>
-
-                  <View style={styles.categoryWrap}>
-                    {allCategories.length === 0 ? (
-                      <AppText tone="muted">אין עדיין קטגוריות ברשימה</AppText>
-                    ) : (
-                      allCategories.map((c) => {
-                        const on = selectedCategories.includes(c);
-                        const label = SHOPPING_CATEGORY_LABELS_HE[c] ?? c;
-                        return (
-                          <SmallPill
-                            key={c}
-                            label={on ? `${label} ✓` : label}
-                            active={on}
-                            onPress={() => toggleCategory(c)}
-                          />
-                        );
-                      })
-                    )}
-                  </View>
-                </View>
-
-                <View style={[styles.rowGap, { marginTop: 14 }]}>
-                  <AppButton
-                    title="נקה פילטרים"
-                    variant="ghost"
-                    onPress={() => {
-                      resetAllFilters();
-                    }}
-                  />
-                  <AppButton title="החל" onPress={() => setFiltersOpen(false)} />
-                </View>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Details modal (extras for quick-add) */}
-      <Modal
-        visible={detailsOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDetailsOpen(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.modalCard}>
-            <AppText style={styles.modalTitle}>פרטים נוספים</AppText>
-
-            <AppText tone="muted" style={styles.mt10}>
-              הוסף שדות (לחיצה אחת):
-            </AppText>
-
-            <View style={styles.extraChipsRow}>
-              <ExtraChip
-                label="מותג"
-                disabled={extraKeys.includes('brand')}
-                onPress={() => addExtraKey('brand')}
-              />
-              <ExtraChip
-                label="הערה"
-                disabled={extraKeys.includes('note')}
-                onPress={() => addExtraKey('note')}
-              />
-              <ExtraChip
-                label="עדיפות"
-                disabled={extraKeys.includes('priority')}
-                onPress={() => addExtraKey('priority')}
-              />
-              <ExtraChip
-                label="מחיר"
-                disabled={extraKeys.includes('price')}
-                onPress={() => addExtraKey('price')}
-              />
-            </View>
-
-            <View style={styles.extraFieldsWrap}>
-              {extraKeys.length === 0 ? (
-                <AppText tone="muted">לא נבחרו שדות עדיין</AppText>
-              ) : (
-                extraKeys.map((k) => (
-                  <View key={k} style={styles.extraFieldRow}>
-                    <View style={styles.extraLabelCol}>
-                      <AppText style={styles.extraKeyText}>{heExtraLabel(k)}</AppText>
-                    </View>
-
-                    <TextInput
-                      value={extras[k] ?? ''}
-                      onChangeText={(t) => setExtras((e) => ({ ...e, [k]: t }))}
-                      placeholder={`הכנס ${heExtraLabel(k)}`}
-                      placeholderTextColor={theme.colors.muted}
-                      style={[styles.input, styles.extraInput]}
-                    />
-
-                    <Pressable
-                      onPress={() => removeExtraKey(k)}
-                      style={({ pressed }) => [
-                        styles.removeBtn,
-                        pressed && styles.removeBtnPressed,
-                      ]}
-                    >
-                      <AppText style={styles.removeBtnText}>✕</AppText>
-                    </Pressable>
-                  </View>
-                ))
-              )}
-            </View>
-
-            <View style={[styles.rowGap, styles.mtLg]}>
-              <AppButton title="סגור" variant="ghost" onPress={() => setDetailsOpen(false)} />
-              <AppButton title="שמור" onPress={() => setDetailsOpen(false)} disabled={saving} />
-            </View>
-          </Card>
-        </View>
-      </Modal>
-
-      {/* Item modal */}
-      <Modal visible={itemOpen} transparent animationType="fade" onRequestClose={closeItem}>
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.modalCard}>
-            <View style={styles.modalTopRow}>
-              <AppText style={styles.modalTitle}>עריכת פריט</AppText>
-              <Pressable onPress={closeItem} style={{ padding: 8 }}>
-                <AppText style={{ fontWeight: '900' }}>✕</AppText>
+                <AppText style={styles.expandBtnText}>
+                  {quickAddExpanded ? t('collapse') : t('expand')}
+                </AppText>
+                <AppText style={styles.expandChevron}>
+                  {quickAddExpanded ? (
+                    <ChevronUp size={18} color={theme.colors.text} />
+                  ) : (
+                    <ChevronDown size={18} color={theme.colors.text} />
+                  )}
+                </AppText>
               </Pressable>
             </View>
 
-            {activeItem ? (
-              <ScrollView
-                style={{ marginTop: 10, maxHeight: 520 }}
-                contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-                keyboardShouldPersistTaps="handled"
+            <View style={[styles.formGap, styles.autocompleteLayer]}>
+              <View style={[styles.nameRow, isRTL && styles.nameRowRTL]}>
+                <View style={styles.addBtnWrap}>
+                  <AppButton
+                    title={saving ? (t('adding') ?? 'מוסיף') + '...' : (t('add') ?? 'הוסף')}
+                    onPress={onAdd}
+                    disabled={
+                      !name.trim() || saving || wouldDuplicate(name.trim(), selectedTermId) || !list
+                    }
+                  />
+                </View>
+                <View style={{ flex: 2, minWidth: 0 }}>
+                  <NameAutocompleteField
+                    label={t('itemName')}
+                    existingNames={items.map((x) => x.name)}
+                    value={name}
+                    overlayActive={overlayActive}
+                    onChangeText={(txt) => {
+                      setName(txt);
+                      setSelectedTermId(null);
+                    }}
+                    placeholder={t('exampleCucumber')}
+                    minChars={2}
+                    lang={lang}
+                    isRTL={isRTL}
+                    fetchSuggest={fetchSuggest}
+                    onCreateNew={onCreateNew}
+                    onVote={onVote}
+                    onPick={onPick}
+                  />
+                </View>
+              </View>
+
+              <View
+                pointerEvents="none"
+                style={styles.extraMeasureBox}
+                onLayout={(e) => {
+                  const h = Math.ceil(e.nativeEvent.layout.height);
+                  if (h > 0 && h !== extraMaxHRef.current) {
+                    extraMaxHRef.current = h;
+                    extraH.stopAnimation((val: number) => {
+                      if (val > 0.01) extraH.setValue(h);
+                    });
+                  }
+                }}
               >
-                <AppText tone="muted">שם</AppText>
-                <TextInput
-                  value={editName}
-                  onChangeText={setEditName}
-                  placeholder="שם פריט"
-                  placeholderTextColor={theme.colors.muted}
-                  style={styles.input}
-                />
+                <ExtraContent measureOnly />
+              </View>
 
-                <CategoryDropdown value={editCategory} onChange={setEditCategory} label="קטגוריה" />
+              <Animated.View style={[styles.extraArea, { height: extraH }]}>
+                <View style={{ paddingTop: 6 }}>
+                  <ExtraContent />
+                </View>
+              </Animated.View>
+            </View>
 
-                <AppText tone="muted">יחידה</AppText>
-                <UnitChips value={editUnit} onChange={setEditUnit} />
+            <View
+              style={[styles.grabberBottomWrap, Platform.OS === 'web' && styles.grabberWebNoScroll]}
+              {...(Platform.OS === 'web' ? (webHandlers as any) : grabberPan.panHandlers)}
+            >
+              <View style={styles.grabber} />
+              <AppText tone="muted" style={styles.grabberHint}>
+                {t('dragTo')} {quickAddExpanded ? t('collapseVerb') : t('expandVerb')}
+              </AppText>
+            </View>
+          </Card>
+        ) : null}
 
-                <AppText tone="muted">כמות</AppText>
-                <TextInput
-                  value={editQty}
-                  onChangeText={setEditQty}
-                  keyboardType="numeric"
-                  placeholder="כמות"
-                  placeholderTextColor={theme.colors.muted}
-                  style={styles.input}
-                />
+        {loading ? (
+          <View style={{ marginTop: theme.space.lg, alignItems: 'center' }}>
+            <ActivityIndicator />
+            <AppText tone="muted" style={{ marginTop: 8 }}>
+              טוען…
+            </AppText>
+          </View>
+        ) : null}
 
-                <AppText tone="muted" style={{ marginTop: 6 }}>
-                  פרטים נוספים (ברמת הרשימה)
+        <View style={{ height: 12 }} />
+      </View>
+    );
+  }, [
+    lastError,
+    isRTL,
+    list,
+    listName,
+    counts.total,
+    counts.checked,
+    load,
+    showQuickAdd,
+    quickAddExpanded,
+    saving,
+    onAdd,
+    name,
+    wouldDuplicate,
+    selectedTermId,
+    items,
+    overlayActive,
+    lang,
+    fetchSuggest,
+    onCreateNew,
+    onVote,
+    onPick,
+    ExtraContent,
+    extraH,
+    webHandlers,
+    grabberPan.panHandlers,
+    loading,
+    snapExtraTo,
+  ]);
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <View
+        style={[
+          styles.screen,
+          Platform.OS === 'web' && ({ direction: isRTL ? 'rtl' : 'ltr' } as any),
+        ]}
+      >
+        <FlatList
+          style={styles.list} // להסיר את overflow:auto
+          contentContainerStyle={styles.listContent}
+          data={rows}
+          ref={listRef}
+          onScroll={(e) => {
+            const y = e.nativeEvent.contentOffset.y;
+            setShowBackToAdd(y > 220); // אפשר לשחק עם הערך
+          }}
+          scrollEventThrottle={16}
+          keyExtractor={(x) => x.id}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={ListHeader}
+          ListHeaderComponentStyle={styles.listHeaderOver}
+          CellRendererComponent={({ children, style, ...rest }: any) => (
+            <View {...rest} style={[style, styles.listCellUnderHeader]}>
+              {children}
+            </View>
+          )}
+          removeClippedSubviews={false}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyBox}>
+                <AppText style={{ fontWeight: '900' }}>{t('noItems') ?? 'אין פריטים'}</AppText>
+                <AppText tone="muted" style={{ marginTop: 6, textAlign: 'center' }}>
+                  {t('clearFilterMessage') ?? 'אם הפילטרים מסתירים הכל — נקה פילטרים'}
+                </AppText>
+                {filtersActive ? (
+                  <View style={{ marginTop: 12 }}>
+                    <AppButton
+                      title={t('cleanFilters') ?? 'נקה פילטרים'}
+                      variant="ghost"
+                      onPress={resetAllFilters}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            ) : null
+          }
+          renderItem={({ item: row }) => {
+            if (row.kind === 'header') {
+              return (
+                <View style={styles.groupHeader}>
+                  <AppText style={styles.groupHeaderText}>{row.title}</AppText>
+                </View>
+              );
+            }
+
+            return (
+              <ItemRow
+                item={row.item}
+                onOpen={openItem}
+                onToggleChecked={setChecked}
+                onDelete={deleteOne}
+              />
+            );
+          }}
+        />
+        {showBackToAdd && showQuickAdd && (
+          <Pressable
+            onPress={() => {
+              listRef.current?.scrollToOffset({ offset: 0, animated: true });
+              setShowQuickAdd(true);
+              snapExtraTo(false); // או true אם אתה רוצה שייפתח
+            }}
+            style={({ pressed }) => [styles.backToAddBtn, pressed && { opacity: 0.85 }]}
+          >
+            <ChevronUp size={18} color="#fff" />
+            <AppText style={styles.backToAddText}>{t('addItem')}</AppText>
+          </Pressable>
+        )}
+
+        {/* Filters Bottom Sheet */}
+        <Modal
+          visible={filtersOpen}
+          transparent
+          animationType="none"
+          onRequestClose={closeFilters}
+          presentationStyle="overFullScreen"
+        >
+          <View style={styles.sheetBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeFilters} />
+
+            <Animated.View
+              style={[styles.sheet, { height: sheetH, transform: [{ translateY }] }]}
+              {...sheetPan.panHandlers}
+            >
+              <View style={styles.sheetHandleWrap}>
+                <View style={styles.sheetHandle} />
+              </View>
+
+              <View style={styles.sheetHeader}>
+                <AppText style={styles.sheetTitle}>
+                  {<Filter size={18} color={theme.colors.text} />}
                 </AppText>
 
-                <View style={styles.extraChipsRow}>
-                  <ExtraChip
-                    label="מותג"
-                    disabled={editExtraKeys.includes('brand')}
-                    onPress={() => {
-                      setEditExtraKeys((s) => (s.includes('brand') ? s : [...s, 'brand']));
-                      setEditExtras((e) => ({ ...e, brand: e.brand ?? '' }));
-                    }}
-                  />
-                  <ExtraChip
-                    label="הערה"
-                    disabled={editExtraKeys.includes('note')}
-                    onPress={() => {
-                      setEditExtraKeys((s) => (s.includes('note') ? s : [...s, 'note']));
-                      setEditExtras((e) => ({ ...e, note: e.note ?? '' }));
-                    }}
-                  />
-                  <ExtraChip
-                    label="עדיפות"
-                    disabled={editExtraKeys.includes('priority')}
-                    onPress={() => {
-                      setEditExtraKeys((s) => (s.includes('priority') ? s : [...s, 'priority']));
-                      setEditExtras((e) => ({ ...e, priority: e.priority ?? '' }));
-                    }}
-                  />
-                  <ExtraChip
-                    label="מחיר"
-                    disabled={editExtraKeys.includes('price')}
-                    onPress={() => {
-                      setEditExtraKeys((s) => (s.includes('price') ? s : [...s, 'price']));
-                      setEditExtras((e) => ({ ...e, price: e.price ?? '' }));
-                    }}
-                  />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Pressable
+                    onPress={resetAllFilters}
+                    style={({ pressed }) => [styles.sheetHeaderBtn, pressed && { opacity: 0.85 }]}
+                  >
+                    <AppText style={{ fontWeight: '900' }}>{t('reset')}</AppText>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={closeFilters}
+                    style={({ pressed }) => [styles.sheetHeaderBtn, pressed && { opacity: 0.85 }]}
+                  >
+                    <AppText style={{ fontWeight: '900' }}>{t('close')}</AppText>
+                  </Pressable>
                 </View>
+              </View>
 
-                <View style={styles.extraFieldsWrap}>
-                  {editExtraKeys.length === 0 ? (
-                    <AppText tone="muted">אין פרטים נוספים</AppText>
-                  ) : (
-                    editExtraKeys.map((k) => (
-                      <View key={k} style={styles.extraFieldRow}>
-                        <View style={styles.extraLabelCol}>
-                          <AppText style={styles.extraKeyText}>{heExtraLabel(k)}</AppText>
-                        </View>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={{ flex: 1 }}
+              >
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ paddingBottom: 24 }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={styles.sheetSection}>
+                    <AppText tone="muted" style={styles.sectionTitle}>
+                      {t('general')}
+                    </AppText>
 
-                        <TextInput
-                          value={editExtras[k] ?? ''}
-                          onChangeText={(t) => setEditExtras((e) => ({ ...e, [k]: t }))}
-                          placeholder={`הכנס ${heExtraLabel(k)}`}
-                          placeholderTextColor={theme.colors.muted}
-                          style={[styles.input, styles.extraInput]}
-                        />
+                    <View style={styles.rowGap}>
+                      <AppButton
+                        title={
+                          groupByCategory
+                            ? (t('groupByCategory') ?? 'קבץ לפי קטגוריה') + '✓'
+                            : (t('groupByCategory') ?? 'קבץ לפי קטגוריה')
+                        }
+                        variant="ghost"
+                        onPress={() => setGroupByCategory((x) => !x)}
+                      />
+                      <AppButton
+                        title={
+                          hideChecked
+                            ? (t('hidePurchased') ?? 'הסתר נרכש') + '✓'
+                            : (t('hidePurchased') ?? 'הסתר נרכש')
+                        }
+                        variant="ghost"
+                        onPress={() => setHideChecked((x) => !x)}
+                      />
+                    </View>
 
-                        <Pressable
-                          onPress={() => {
-                            setEditExtraKeys((s) => s.filter((x) => x !== k));
-                            setEditExtras((e) => {
-                              const n = { ...e };
-                              delete n[k];
-                              return n;
-                            });
-                          }}
-                          style={({ pressed }) => [
-                            styles.removeBtn,
-                            pressed && styles.removeBtnPressed,
-                          ]}
+                    <View style={[styles.rowGap, { marginTop: 10 }]}>
+                      <AppButton
+                        title={
+                          onlyWithPrice
+                            ? (t('onlyWithAPrice') ?? 'רק עם מחיר') + '✓'
+                            : (t('onlyWithAPrice') ?? 'רק עם מחיר')
+                        }
+                        variant="ghost"
+                        onPress={() => setOnlyWithPrice((x) => !x)}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.sheetSection}>
+                    <AppText tone="muted" style={styles.sectionTitle}>
+                      {t('price')}
+                      {priceStats.has
+                        ? ` (${t('exist')}: ${priceStats.min}–${priceStats.max})`
+                        : ` ${t('noProductsWithPricesMessage')}`}
+                    </AppText>
+                    <View style={[styles.rowGap, { marginTop: 8 }]}>
+                      <TextInput
+                        value={priceMinText}
+                        onChangeText={setPriceMinText}
+                        keyboardType="numeric"
+                        placeholder={t('minimum')}
+                        placeholderTextColor={theme.colors.muted}
+                        style={[
+                          styles.input,
+                          isRTL ? styles.textInputRTL : styles.textInputLTR,
+                          { flex: 1 },
+                        ]}
+                      />
+                      <TextInput
+                        value={priceMaxText}
+                        onChangeText={setPriceMaxText}
+                        keyboardType="numeric"
+                        placeholder={t('maximum')}
+                        placeholderTextColor={theme.colors.muted}
+                        style={[
+                          styles.input,
+                          isRTL ? styles.textInputRTL : styles.textInputLTR,
+                          { flex: 1 },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.sheetSection}>
+                    <AppText tone="muted" style={styles.sectionTitle}>
+                      {t('categories')}
+                    </AppText>
+
+                    <View style={styles.categoryWrap}>
+                      {allCategories.length === 0 ? (
+                        <AppText tone="muted">{t('noCategoriesMessage')}</AppText>
+                      ) : (
+                        allCategories.map((c) => {
+                          const on = selectedCategories.includes(c);
+                          const label = SHOPPING_CATEGORY_LABELS_HE[c] ?? c;
+                          return (
+                            <SmallPill
+                              key={c}
+                              label={on ? `${label} ✓` : label}
+                              active={on}
+                              onPress={() => toggleCategory(c)}
+                            />
+                          );
+                        })
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={[styles.rowGap, { marginTop: 14 }]}>
+                    <AppButton
+                      title={t('cleanFilters')}
+                      variant="ghost"
+                      onPress={resetAllFilters}
+                    />
+                    <AppButton title={t('applied')} onPress={() => setFiltersOpen(false)} />
+                  </View>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </Animated.View>
+          </View>
+        </Modal>
+
+        {/* Details modal (extras for quick-add) */}
+        <Modal
+          visible={detailsOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDetailsOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <Card style={styles.modalCard}>
+              <AppText style={[styles.modalTitle, isRTL ? styles.textRTL : styles.textLTR]}>
+                {t('moreDetails')}
+              </AppText>
+
+              <AppText tone="muted" style={[styles.mt10, isRTL ? styles.textRTL : styles.textLTR]}>
+                הוסף שדות (לחיצה אחת):
+              </AppText>
+
+              <View style={[styles.extraChipsRow, isRTL ? styles.textRTL : styles.textLTR]}>
+                <ExtraChip
+                  label="מותג"
+                  disabled={extraKeys.includes('brand')}
+                  onPress={() => addExtraKey('brand')}
+                />
+                <ExtraChip
+                  label="הערה"
+                  disabled={extraKeys.includes('note')}
+                  onPress={() => addExtraKey('note')}
+                />
+                <ExtraChip
+                  label="עדיפות"
+                  disabled={extraKeys.includes('priority')}
+                  onPress={() => addExtraKey('priority')}
+                />
+                <ExtraChip
+                  label="מחיר"
+                  disabled={extraKeys.includes('price')}
+                  onPress={() => addExtraKey('price')}
+                />
+              </View>
+
+              <View style={styles.extraFieldsWrap}>
+                {extraKeys.length === 0 ? (
+                  <AppText style={[isRTL ? styles.textRTL : styles.textLTR]} tone="muted">
+                    לא נבחרו שדות עדיין
+                  </AppText>
+                ) : (
+                  extraKeys.map((k) => (
+                    <View key={k} style={styles.extraFieldRow}>
+                      <View style={styles.extraLabelCol}>
+                        <AppText
+                          style={[styles.extraKeyText, isRTL ? styles.textRTL : styles.textLTR]}
                         >
-                          <AppText style={styles.removeBtnText}>✕</AppText>
-                        </Pressable>
+                          {heExtraLabel(k)}
+                        </AppText>
                       </View>
-                    ))
-                  )}
-                </View>
 
-                <View style={[styles.rowGap, styles.mtLg]}>
-                  <AppButton
-                    title={activeItem.checked ? 'החזר' : 'בוצע'}
-                    variant="ghost"
-                    onPress={() => {
-                      const next = !activeItem.checked;
-                      setChecked(activeItem.id, next);
-                      setActiveItem((prev) => (prev ? { ...prev, checked: next } : prev));
-                    }}
-                  />
-                  <AppButton
-                    title="מחק"
-                    variant="ghost"
-                    onPress={() => {
-                      deleteItem(activeItem.id);
-                      closeItem();
-                    }}
-                  />
-                </View>
+                      <TextInput
+                        value={extras[k] ?? ''}
+                        onChangeText={(txt) => setExtras((e) => ({ ...e, [k]: txt }))}
+                        placeholder={`הכנס ${heExtraLabel(k)}`}
+                        placeholderTextColor={theme.colors.muted}
+                        style={[
+                          styles.input,
+                          isRTL ? styles.textInputRTL : styles.textInputLTR,
+                          styles.extraInput,
+                        ]}
+                      />
 
-                <View style={[styles.rowGap, { marginTop: 10 }]}>
-                  <AppButton title="סגור" variant="ghost" onPress={closeItem} />
-                  <AppButton
-                    title={saving ? 'שומר…' : 'שמור'}
-                    onPress={saveActiveEdits}
-                    disabled={!editName.trim() || saving}
+                      <Pressable
+                        onPress={() => removeExtraKey(k)}
+                        style={({ pressed }) => [
+                          styles.removeBtn,
+                          pressed && styles.removeBtnPressed,
+                        ]}
+                      >
+                        <AppText style={styles.removeBtnText}>✕</AppText>
+                      </Pressable>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              <View style={[styles.rowGap, styles.mtLg]}>
+                <AppButton title="סגור" variant="ghost" onPress={() => setDetailsOpen(false)} />
+                <AppButton
+                  title="שמור"
+                  onPress={() => {
+                    if (!canSaveDetails) return;
+                    setDetailsOpen(false);
+                  }}
+                  disabled={saving || !canSaveDetails}
+                />
+              </View>
+            </Card>
+          </View>
+        </Modal>
+
+        {/* Item modal */}
+        <Modal visible={itemOpen} transparent animationType="fade" onRequestClose={closeItem}>
+          <View style={styles.modalBackdrop}>
+            <Card style={styles.modalCard}>
+              <View style={styles.modalTopRow}>
+                <AppText style={styles.modalTitle}>עריכת פריט</AppText>
+                <Pressable onPress={closeItem} style={{ padding: 8 }}>
+                  <AppText style={{ fontWeight: '900' }}>✕</AppText>
+                </Pressable>
+              </View>
+
+              {activeItem ? (
+                <ScrollView
+                  style={{ marginTop: 10, maxHeight: 540 }}
+                  contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <AppText tone="muted">שם</AppText>
+                  <TextInput
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="שם פריט"
+                    placeholderTextColor={theme.colors.muted}
+                    style={[styles.input, isRTL ? styles.textInputRTL : styles.textInputLTR]}
                   />
-                </View>
-              </ScrollView>
-            ) : null}
-          </Card>
-        </View>
-      </Modal>
-    </View>
+
+                  <CategoryDropdown
+                    value={editCategory}
+                    onChange={setEditCategory}
+                    label="קטגוריה"
+                  />
+
+                  <AppText tone="muted">יחידה</AppText>
+                  <UnitChips value={editUnit} onChange={setEditUnit} />
+
+                  <AppText tone="muted">כמות</AppText>
+                  <TextInput
+                    value={editQty}
+                    onChangeText={setEditQty}
+                    keyboardType="numeric"
+                    placeholder="כמות"
+                    placeholderTextColor={theme.colors.muted}
+                    style={[styles.input, isRTL ? styles.textInputRTL : styles.textInputLTR]}
+                  />
+
+                  <AppText tone="muted" style={{ marginTop: 6 }}>
+                    פרטים נוספים
+                  </AppText>
+
+                  <View style={styles.extraChipsRow}>
+                    <ExtraChip
+                      label="מותג"
+                      disabled={editExtraKeys.includes('brand')}
+                      onPress={() => {
+                        setEditExtraKeys((s) => (s.includes('brand') ? s : [...s, 'brand']));
+                        setEditExtras((e) => ({ ...e, brand: e.brand ?? '' }));
+                      }}
+                    />
+                    <ExtraChip
+                      label="הערה"
+                      disabled={editExtraKeys.includes('note')}
+                      onPress={() => {
+                        setEditExtraKeys((s) => (s.includes('note') ? s : [...s, 'note']));
+                        setEditExtras((e) => ({ ...e, note: e.note ?? '' }));
+                      }}
+                    />
+                    <ExtraChip
+                      label="עדיפות"
+                      disabled={editExtraKeys.includes('priority')}
+                      onPress={() => {
+                        setEditExtraKeys((s) => (s.includes('priority') ? s : [...s, 'priority']));
+                        setEditExtras((e) => ({ ...e, priority: e.priority ?? '' }));
+                      }}
+                    />
+                    <ExtraChip
+                      label="מחיר"
+                      disabled={editExtraKeys.includes('price')}
+                      onPress={() => {
+                        setEditExtraKeys((s) => (s.includes('price') ? s : [...s, 'price']));
+                        setEditExtras((e) => ({ ...e, price: e.price ?? '' }));
+                      }}
+                    />
+                  </View>
+
+                  <View style={styles.extraFieldsWrap}>
+                    {editExtraKeys.length === 0 ? (
+                      <AppText tone="muted">אין פרטים נוספים</AppText>
+                    ) : (
+                      editExtraKeys.map((k) => (
+                        <View key={k} style={styles.extraFieldRow}>
+                          <View style={styles.extraLabelCol}>
+                            <AppText style={styles.extraKeyText}>{heExtraLabel(k)}</AppText>
+                          </View>
+
+                          <TextInput
+                            value={editExtras[k] ?? ''}
+                            onChangeText={(txt) => setEditExtras((e) => ({ ...e, [k]: txt }))}
+                            placeholder={`הכנס ${heExtraLabel(k)}`}
+                            placeholderTextColor={theme.colors.muted}
+                            style={[
+                              styles.input,
+                              isRTL ? styles.textInputRTL : styles.textInputLTR,
+                              styles.extraInput,
+                            ]}
+                          />
+
+                          <Pressable
+                            onPress={() => {
+                              setEditExtraKeys((s) => s.filter((x) => x !== k));
+                              setEditExtras((e) => {
+                                const n = { ...e };
+                                delete n[k];
+                                return n;
+                              });
+                            }}
+                            style={({ pressed }) => [
+                              styles.removeBtn,
+                              pressed && styles.removeBtnPressed,
+                            ]}
+                          >
+                            <AppText style={styles.removeBtnText}>✕</AppText>
+                          </Pressable>
+                        </View>
+                      ))
+                    )}
+                  </View>
+
+                  {editExtraKeys.length > 0 && !canSaveEditDetails ? (
+                    <View style={styles.validationNotice}>
+                      <AppText tone="muted" style={{ fontWeight: '900' }}>
+                        אי אפשר לשמור: יש שדה שנבחר אבל נשאר ריק
+                      </AppText>
+                    </View>
+                  ) : null}
+
+                  <View
+                    style={[
+                      styles.rowGap,
+                      { marginTop: 10, alignItems: 'center', justifyContent: 'space-between' },
+                    ]}
+                  >
+                    <View style={[styles.rowGap]}>
+                      <AppButton
+                        title={saving ? 'שומר…' : 'שמור'}
+                        onPress={saveActiveEdits}
+                        disabled={!editName.trim() || saving || !canSaveEditDetails}
+                      ></AppButton>
+                      <AppText
+                        onPress={() => {
+                          const next = !activeItem.checked;
+                          void setChecked(activeItem.id, next);
+                          setActiveItem((prev) => (prev ? { ...prev, checked: next } : prev));
+                        }}
+                      >
+                        {activeItem.checked ? (
+                          <CheckCircle2 size={40} color={theme.colors.text} />
+                        ) : (
+                          <Undo2 size={25} color={theme.colors.text} />
+                        )}
+                      </AppText>
+                    </View>
+
+                    <View style={[styles.rowGap, styles.mtLg]}>
+                      <AppText
+                        onPress={() => {
+                          void deleteOne(activeItem.id);
+                          closeItem();
+                        }}
+                      >
+                        {<Trash size={25} color={theme.colors.text} />}
+                      </AppText>
+                    </View>
+                  </View>
+                </ScrollView>
+              ) : null}
+            </Card>
+          </View>
+        </Modal>
+      </View>
+    </SafeAreaView>
   );
 }
 
 /* =======================
-   Styles
+   Styles (כמו אצלך)
 ======================= */
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: theme.colors.bg } as ViewStyle,
+
   screen: {
     flex: 1,
     backgroundColor: theme.colors.bg,
-    // במובייל padding xl זה “ענק” -> זה אחד הדברים שעשו את זה מכוער
-    paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     paddingBottom: 10,
   } as ViewStyle,
 
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  } as ViewStyle,
+  headerWrap: {} as ViewStyle,
 
-  title: {
-    fontSize: 20,
-    fontWeight: '900',
-  } as TextStyle,
+  title: { fontSize: 22, fontWeight: '900', letterSpacing: 0.2 } as TextStyle,
+  subTitle: { marginTop: 4, opacity: 0.85, fontWeight: '800' } as TextStyle,
 
-  subTitle: {
-    marginTop: 2,
-    opacity: 0.8,
-    fontWeight: '800',
-  } as TextStyle,
-
-  controlBar: {
-    marginTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    alignItems: 'center',
-  } as ViewStyle,
-
-  controlBtn: {
+  headerBtn: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   } as ViewStyle,
 
-  controlBtnGhost: {
+  headerBtnGhost: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 14,
@@ -1584,46 +1776,48 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
 
-  controlBtnText: {
-    fontWeight: '900',
-  } as TextStyle,
+  headerBtnText: { fontWeight: '900' } as TextStyle,
 
-  pill: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+  topControls: {
+    marginTop: 4,
+    marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  } as ViewStyle,
+  topControlsRTL: { justifyContent: 'flex-end' } as ViewStyle,
+
+  toggleQuickAdd: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
+  toggleQuickAddText: { fontWeight: '900', opacity: 0.95 } as TextStyle,
 
-  pillActive: {
-    backgroundColor: 'rgba(29,78,216,0.55)',
-    borderColor: 'rgba(29,78,216,1)',
-  } as ViewStyle,
+  cardTop: { marginTop: 10 } as ViewStyle,
+  cardTitle: { fontWeight: '900', fontSize: 16 } as TextStyle,
 
-  pillText: {
-    fontWeight: '900',
-    opacity: 0.95,
-  } as TextStyle,
-
-  cardTop: {
-    marginTop: 14,
-  } as ViewStyle,
-
-  cardTitle: {
-    fontWeight: '900',
-  } as TextStyle,
-
-  formGap: {
-    marginTop: theme.space.md,
-    gap: 10,
-  } as ViewStyle,
-
-  rowGap: {
+  expandBtn: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
+  expandBtnText: { fontWeight: '900' } as TextStyle,
+  expandChevron: { fontWeight: '900', opacity: 0.85 } as TextStyle,
+
+  formGap: { marginTop: theme.space.md, gap: 10 } as ViewStyle,
+  rowGap: { flexDirection: 'row', gap: 10 } as ViewStyle,
+
+  sectionBlock: { marginTop: 6 } as ViewStyle,
+  sectionLabel: { marginBottom: 6, fontWeight: '800' } as TextStyle,
 
   input: {
     borderWidth: 1,
@@ -1635,166 +1829,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
   } as any,
 
-  list: { marginTop: 14 } as ViewStyle,
-  listContent: { gap: theme.space.md, paddingBottom: 40 } as ViewStyle,
+  extraArea: { overflow: 'hidden', marginTop: 8 } as ViewStyle,
 
-  groupHeader: { paddingVertical: 8, paddingHorizontal: 2 } as ViewStyle,
-  groupHeaderText: { fontWeight: '900', opacity: 0.9 } as TextStyle,
-
-  itemTopRow: { flexDirection: 'row', justifyContent: 'space-between' } as ViewStyle,
-  itemName: { fontWeight: '900' } as TextStyle,
-
-  mt10: { marginTop: 10 } as ViewStyle,
-  mtLg: { marginTop: theme.space.lg } as ViewStyle,
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  } as ViewStyle,
-
-  modalCard: { width: '92%', maxWidth: 520 } as ViewStyle,
-
-  modalTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  } as ViewStyle,
-
-  modalTitle: { fontSize: 18, fontWeight: '900' } as TextStyle,
-
-  unitRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-    marginTop: 6,
-  } as ViewStyle,
-
-  unitChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  } as ViewStyle,
-
-  unitChipActive: {
-    backgroundColor: 'rgba(29,78,216,0.6)',
-    borderColor: 'rgba(29,78,216,1)',
-  } as ViewStyle,
-
-  extraChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  dupNotice: {
     marginTop: 10,
-  } as ViewStyle,
-
-  extraChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    padding: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(245,158,11,0.35)',
+    backgroundColor: 'rgba(245,158,11,0.08)',
   } as ViewStyle,
 
-  extraChipPressed: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  } as ViewStyle,
+  list: { flex: 1 } as ViewStyle,
+  listContent: { gap: theme.space.md, paddingBottom: 40 } as any,
 
-  extraChipDisabled: {
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    opacity: 0.55,
-  } as ViewStyle,
+  groupHeader: { paddingTop: 10, paddingBottom: 6, paddingHorizontal: 2 } as ViewStyle,
+  groupHeaderText: { fontWeight: '900', opacity: 0.92, fontSize: 14 } as TextStyle,
 
-  extraChipText: {
-    fontWeight: '900',
-  } as TextStyle,
+  itemNameChecked: { opacity: 0.55, textDecorationLine: 'line-through' } as any,
 
-  extraFieldsWrap: {
-    marginTop: 14,
-    gap: 10,
-  } as ViewStyle,
-
-  extraFieldRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  } as ViewStyle,
-
-  extraLabelCol: {
-    width: 90,
-  } as ViewStyle,
-
-  extraKeyText: {
-    fontWeight: '900',
-  } as TextStyle,
-
-  extraInput: {
-    flex: 1,
-  } as ViewStyle,
-
-  removeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  qtyBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
-
-  removeBtnPressed: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  } as ViewStyle,
-
-  removeBtnText: {
-    fontWeight: '900',
-  } as TextStyle,
-
-  itemMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 10,
-  } as ViewStyle,
-
-  itemActionsInline: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  } as ViewStyle,
-
-  quickAddCardFix: {
-    overflow: 'visible',
-    zIndex: 20,
-  } as ViewStyle,
-
-  grabberWebNoScroll: {
-    cursor: 'grab',
-    touchAction: 'none',
-    userSelect: 'none',
-  } as any,
-
-  grabberBottomWrap: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    marginTop: 10,
-  } as ViewStyle,
-
-  grabber: {
-    width: 72,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  } as ViewStyle,
+  qtyBadgeText: { fontWeight: '900', opacity: 0.95 } as TextStyle,
 
   iconBtn: {
     width: 34,
@@ -1806,29 +1868,129 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
+  iconBtnPressed: { backgroundColor: 'rgba(255,255,255,0.06)' } as ViewStyle,
+  iconBtnText: { fontWeight: '900' } as TextStyle,
 
-  iconBtnPressed: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  emptyBox: {
+    marginTop: 18,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
   } as ViewStyle,
 
-  iconBtnText: {
-    fontWeight: '900',
-  } as TextStyle,
-
-  autocompleteLayer: {
-    position: 'relative',
-    zIndex: 999,
-    elevation: 999,
+  unitRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 } as ViewStyle,
+  unitChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   } as ViewStyle,
+  unitChipActive: {
+    backgroundColor: 'rgba(29,78,216,0.6)',
+    borderColor: 'rgba(29,78,216,1)',
+  } as ViewStyle,
+  unitChipText: { fontWeight: '900', opacity: 0.95 } as TextStyle,
 
-  /* ===== Bottom Sheet styles ===== */
+  pill: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  } as ViewStyle,
+  pillActive: {
+    backgroundColor: 'rgba(29,78,216,0.55)',
+    borderColor: 'rgba(29,78,216,1)',
+  } as ViewStyle,
+  pillText: { fontWeight: '900', opacity: 0.95 } as TextStyle,
+
+  mt10: { marginTop: 10 } as ViewStyle,
+  mtLg: { marginTop: theme.space.lg } as ViewStyle,
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  } as ViewStyle,
+  modalCard: { width: '92%', maxWidth: 560 } as ViewStyle,
+  modalTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  } as ViewStyle,
+  modalTitle: { fontSize: 18, fontWeight: '900' } as TextStyle,
+
+  extraChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 } as ViewStyle,
+  extraChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  } as ViewStyle,
+  extraChipPressed: { backgroundColor: 'rgba(255,255,255,0.06)' } as ViewStyle,
+  extraChipDisabled: {
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    opacity: 0.55,
+  } as ViewStyle,
+  extraChipText: { fontWeight: '900' } as TextStyle,
+
+  extraFieldsWrap: { marginTop: 14, gap: 10 } as ViewStyle,
+  extraFieldRow: { flexDirection: 'row', alignItems: 'center', gap: 10 } as ViewStyle,
+  extraLabelCol: { width: 90 } as ViewStyle,
+  extraKeyText: { fontWeight: '900' } as TextStyle,
+  extraInput: { flex: 1 } as ViewStyle,
+
+  removeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  } as ViewStyle,
+  removeBtnPressed: { backgroundColor: 'rgba(255,255,255,0.06)' } as ViewStyle,
+  removeBtnText: { fontWeight: '900' } as TextStyle,
+
+  quickAddCardFix: { overflow: 'visible', zIndex: 0, elevation: 0 } as any,
+  autocompleteLayer: { position: 'relative', zIndex: 2, elevation: 2 } as any,
+
+  grabberWebNoScroll: { cursor: 'grab', touchAction: 'none', userSelect: 'none' } as any,
+  grabberBottomWrap: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 8,
+    gap: 6,
+  } as ViewStyle,
+  grabber: {
+    width: 72,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  } as ViewStyle,
+  grabberHint: { fontSize: 12, fontWeight: '800', opacity: 0.85 } as TextStyle,
+
+  extraMeasureBox: { position: 'absolute', left: -9999, top: -9999, opacity: 0 } as ViewStyle,
 
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   } as ViewStyle,
-
   sheet: {
     backgroundColor: theme.colors.bg,
     borderTopLeftRadius: 22,
@@ -1838,19 +2000,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 10,
   } as ViewStyle,
-
-  sheetHandleWrap: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  } as ViewStyle,
-
+  sheetHandleWrap: { alignItems: 'center', paddingVertical: 8 } as ViewStyle,
   sheetHandle: {
     width: 56,
     height: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.22)',
   } as ViewStyle,
-
   sheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1859,12 +2015,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   } as ViewStyle,
-
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-  } as TextStyle,
-
+  sheetTitle: { fontSize: 18, fontWeight: '900' } as TextStyle,
   sheetHeaderBtn: {
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -1873,25 +2024,101 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
+  sheetSection: { paddingTop: 14 } as ViewStyle,
+  sectionTitle: { fontWeight: '900', marginBottom: 10 } as TextStyle,
 
-  sheetSection: {
-    paddingTop: 14,
-  } as ViewStyle,
+  categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 } as ViewStyle,
 
-  sectionTitle: {
-    fontWeight: '900',
-    marginBottom: 10,
-  } as TextStyle,
-
-  categoryWrap: {
+  moreDetailsBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   } as ViewStyle,
-  extraMeasureBox: {
+  moreDetailsText: { fontWeight: '900' } as TextStyle,
+  moreDetailsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#ef4444',
+    marginLeft: 2,
+  } as ViewStyle,
+
+  validationNotice: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.35)',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  } as ViewStyle,
+
+  textRTL: { textAlign: 'right', writingDirection: 'rtl' } as any,
+  textLTR: { textAlign: 'left', writingDirection: 'ltr' } as any,
+  textInputRTL: { textAlign: 'right', writingDirection: 'rtl' } as any,
+  textInputLTR: { textAlign: 'left', writingDirection: 'ltr' } as any,
+
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  } as ViewStyle,
+  textCol: { flex: 1, minWidth: 0 } as ViewStyle,
+  controlsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 } as ViewStyle,
+  controlsRowRTL: { flexDirection: 'row-reverse' } as ViewStyle,
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  } as ViewStyle,
+  headerTextCol: { flex: 1, minWidth: 0 } as ViewStyle,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+    marginLeft: 12,
+  } as ViewStyle,
+  headerActionsRTL: { flexDirection: 'row-reverse', marginLeft: 0, marginRight: 12 } as ViewStyle,
+
+  quickAddHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 } as ViewStyle,
+
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 } as ViewStyle,
+  nameRowRTL: { flexDirection: 'row-reverse' } as ViewStyle,
+  addBtnWrap: { width: 92, alignSelf: 'flex-end' } as ViewStyle,
+
+  listHeaderOver: { position: 'relative', zIndex: 9999, elevation: 9999 } as any,
+  listCellUnderHeader: { position: 'relative', zIndex: 0, elevation: 0 } as any,
+
+  itemNameInline: { fontWeight: '900', fontSize: 16 } as TextStyle,
+  itemMetaInline: { fontWeight: '800', opacity: 0.85 } as TextStyle,
+  backToAddBtn: {
     position: 'absolute',
-    left: -9999,
-    top: -9999,
-    opacity: 0,
-  } as ViewStyle,
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(29,78,216,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    zIndex: 9999,
+    elevation: 10,
+  },
+
+  backToAddText: {
+    fontWeight: '900',
+    color: '#fff',
+  },
 });

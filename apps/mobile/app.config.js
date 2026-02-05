@@ -41,6 +41,7 @@ module.exports = {
     },
 
     plugins: [
+      'expo-sqlite',
       [
         'expo-splash-screen',
         {

@@ -54,7 +54,7 @@ export function TabsNavigator() {
         name="ShoppingTab"
         component={ShoppingStack}
         options={{
-          title: 'רשימות',
+          title: t('shopping_lists'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart-outline" size={size} color={color} />
           ),

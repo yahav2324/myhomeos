@@ -1,30 +1,67 @@
 import * as React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 
 import { RootNavigator } from './navigation/RootNavigator';
 import { useLangStore } from './shared/i18n/lang.store';
 import { maybePromptRtlRestartIfPending } from './shared/i18n/rtl';
 import { theme } from './shared/theme/theme';
+import { initSqlite } from './shared/db/sqlite';
+import { useNetStore } from './shared/offline/net.store';
+import { useShoppingStore } from './features/shopping/store/shopping.store';
+import { useNetworkStore } from './shared/network/network.store';
 
 export default function App() {
   const hydrated = useLangStore((s) => s.hydrated);
-  const hydrate = useLangStore((s) => s.hydrate);
-  const version = useLangStore((s) => s.version);
 
-  // 1) hydrate פעם אחת בתחילת האפליקציה
+  // ✅ init network ONCE (בלי deps שיכולים להשתנות)
   React.useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+    const cleanup = useNetworkStore.getState().init();
+    return cleanup;
+  }, []);
 
-  // 2) להציג prompt רק אחרי שסיימנו hydrate
+  // ✅ init db once
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') {
+      initSqlite().catch((e) => console.log('initSqlite failed', e));
+    }
+  }, []);
+
+  // ✅ net hydrate once (native only)
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const unsub = useNetStore.getState().hydrate();
+    return unsub;
+  }, []);
+
+  // ✅ when network comes back -> try sync (native only)
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    let prev = useNetStore.getState().isOnline;
+
+    const unsub = useNetStore.subscribe((state) => {
+      const now = state.isOnline;
+      if (!prev && now) {
+        void useShoppingStore.getState().trySync();
+      }
+      prev = now;
+    });
+
+    return unsub;
+  }, []);
+
+  // ✅ hydrate lang ONCE
+  React.useEffect(() => {
+    void useLangStore.getState().hydrate();
+  }, []);
+
+  // ✅ show prompt only after hydrated
   React.useEffect(() => {
     if (!hydrated) return;
     void maybePromptRtlRestartIfPending();
   }, [hydrated]);
 
-  // 3) בזמן טעינה – לא להרים את הניווט בכלל
-  // (מונע ריצות מוקדמות / UI לא יציב)
   if (!hydrated) {
     return (
       <View
@@ -40,10 +77,8 @@ export default function App() {
     );
   }
 
-  // אם אתה באמת צריך rerender של כל ה-navigation על שינוי שפה,
-  // אפשר להשאיר key=version. אחרת עדיף להסיר.
   return (
-    <NavigationContainer key={version}>
+    <NavigationContainer>
       <RootNavigator />
     </NavigationContainer>
   );

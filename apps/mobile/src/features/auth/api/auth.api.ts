@@ -1,13 +1,99 @@
-import { emitAuthRequired } from '../auth.events';
-import { getTokens, saveTokens, clearTokens } from '../auth.tokens';
+import { useAuthStore } from '../store/auth.store'; // (או איפה שאתה מחזיק token)
+import { useConnectivityStore } from '../../../shared/network/connectivity.store';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.myhomeos.app/api';
+const DEFAULT_TIMEOUT_MS = 12000;
 
-export async function googleLogin(idToken: string, deviceName?: string) {
-  return fetchJson('/auth/google', {
+type GoogleLoginRes = {
+  accessToken: string;
+  refreshToken: string;
+  user?: any;
+  needsOnboarding?: boolean;
+};
+
+export async function googleLogin(idToken: string, deviceName?: string): Promise<GoogleLoginRes> {
+  const res = await fetch(`${API_BASE}/auth/google`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ idToken, deviceName }),
   });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const msg = (json && (json.message || json.error)) || `Google login failed (${res.status})`;
+    throw new Error(msg);
+  }
+
+  // אצלך בשרת זה מחזיר: { accessToken, refreshToken, user, needsOnboarding }
+  return json;
+}
+
+function withTimeout(signal?: AbortSignal, ms = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+
+  const onAbort = () => controller.abort();
+  signal?.addEventListener?.('abort', onAbort);
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(id);
+      signal?.removeEventListener?.('abort', onAbort);
+    },
+  };
+}
+
+export async function authedFetch(path: string, init: RequestInit = {}) {
+  const { isOnline, setServerOk, setServerDown } = useConnectivityStore.getState();
+
+  // אם אין אינטרנט במכשיר -> נחזיר שגיאה "אופליין" בלי לירות רשת
+  if (!isOnline) {
+    setServerDown('Device offline');
+    throw new Error('OFFLINE');
+  }
+
+  const token = useAuthStore.getState().accessToken; // תתאים לשם אצלך
+
+  const headers: Record<string, string> = {
+    ...(init.headers as any),
+  };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (!headers['Content-Type'] && init.body) headers['Content-Type'] = 'application/json';
+
+  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+
+  const { signal, cleanup } = withTimeout(init.signal ?? undefined, DEFAULT_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, { ...init, headers, signal });
+
+    // ✅ ברגע שקיבלנו תשובה מהשרת — הוא "נגיש"
+    setServerOk();
+
+    // אם השרת מחזיר 5xx הרבה פעמים זה עדיין “server down” לוגית,
+    // אבל לפחות יש תקשורת. נשאיר "ok" כי זה reachable.
+    return res;
+  } catch (e: any) {
+    const msg = String(e?.message ?? e ?? '');
+
+    // timeout / network / dns
+    if (
+      msg.includes('Network request failed') ||
+      msg.includes('AbortError') ||
+      msg.includes('Failed to fetch')
+    ) {
+      setServerDown(msg.includes('AbortError') ? 'Timeout' : 'Server unreachable');
+    } else {
+      setServerDown(msg);
+    }
+
+    throw e;
+  } finally {
+    cleanup();
+  }
 }
 
 async function fetchJson(path: string, init?: RequestInit) {
@@ -57,6 +143,12 @@ async function fetchJson(path: string, init?: RequestInit) {
   }
 }
 
+export async function otpVerify(challengeId: string, code: string, deviceName?: string) {
+  return fetchJson('/auth/otp/verify', {
+    method: 'POST',
+    body: JSON.stringify({ challengeId, code, deviceName }),
+  });
+}
 export async function otpRequest(phoneE164: string) {
   return fetchJson('/auth/otp/request', {
     method: 'POST',
@@ -64,52 +156,6 @@ export async function otpRequest(phoneE164: string) {
   });
 }
 
-export async function otpVerify(challengeId: string, code: string, deviceName?: string) {
-  return fetchJson('/auth/otp/verify', {
-    method: 'POST',
-    body: JSON.stringify({ challengeId, code, deviceName }),
-  });
-}
-
 export async function refreshTokens(refreshToken: string) {
-  return fetchJson('/auth/refresh', {
-    method: 'POST',
-    body: JSON.stringify({ refreshToken }),
-  });
-}
-
-export async function authedFetch(path: string, init?: RequestInit) {
-  const { accessToken, refreshToken } = await getTokens();
-
-  const doReq = async (token: string | null) => {
-    const mergedHeaders = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    };
-
-    return fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: mergedHeaders,
-    });
-  };
-
-  let res = await doReq(accessToken);
-  if (res.status !== 401) return res;
-
-  try {
-    if (!refreshToken) {
-      await clearTokens();
-      emitAuthRequired();
-      return res;
-    }
-    const refreshed = await refreshTokens(refreshToken);
-    await saveTokens(refreshed.accessToken, refreshed.refreshToken);
-    res = await doReq(refreshed.accessToken);
-    return res;
-  } catch {
-    await clearTokens();
-    emitAuthRequired();
-    return res;
-  }
+  return fetchJson('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) });
 }

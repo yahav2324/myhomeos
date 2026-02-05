@@ -1,3 +1,4 @@
+// apps/mobile/src/shared/components/categoryDropdown.tsx
 import * as React from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
   Dimensions,
   FlatList,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { AppText } from '../../shared/ui/AppText';
 import { theme } from '../../shared/theme/theme';
@@ -25,26 +27,80 @@ function clamp(x: number, min: number, max: number) {
   return Math.max(min, Math.min(max, x));
 }
 
-export function CategoryDropdown(props: {
+/**
+ * Web portal: guarantees top-most overlay even when RN-web Modal gets clipped by stacking contexts.
+ */
+export function WebPortal({ children }: { children: React.ReactNode }) {
+  const isWeb = Platform.OS === 'web';
+  const elRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!isWeb) return;
+    const d = document.createElement('div');
+    d.style.position = 'fixed';
+    d.style.left = '0';
+    d.style.top = '0';
+    d.style.width = '100%';
+    d.style.height = '100%';
+    d.style.zIndex = '2147483647';
+    d.style.pointerEvents = 'none'; // חשוב!
+    document.body.appendChild(d);
+    elRef.current = d;
+
+    return () => {
+      try {
+        document.body.removeChild(d);
+      } catch {
+        /* empty */
+      }
+      elRef.current = null;
+    };
+  }, [isWeb]);
+
+  if (!isWeb || !elRef.current) return <>{children}</>;
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createPortal } = require('react-dom') as typeof import('react-dom');
+  return createPortal(children, elRef.current);
+}
+
+type Props = {
   value: ShoppingCategory | null;
   onChange: (v: ShoppingCategory | null) => void;
   label?: string;
-}) {
-  const { value, onChange, label = 'קטגוריה' } = props;
+  isRTL?: boolean;
+  measureOnly?: boolean;
+  onOpenChange?: (open: boolean) => void; // ✅ חדש
+};
+
+export function CategoryDropdown(props: Props) {
+  const { value, onChange, label = 'קטגוריה', isRTL = false, measureOnly = false } = props;
 
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState('');
 
   const selectedLabel = value ? SHOPPING_CATEGORY_LABELS_HE[value] : 'בחר קטגוריה';
+  const ALL_CATEGORIES: ShoppingCategory[] = React.useMemo(() => {
+    const x: any = SHOPPING_CATEGORIES as any;
 
+    // אם זה כבר מערך - סבבה
+    if (Array.isArray(x)) return x as ShoppingCategory[];
+
+    // אם זה enum/object - קח values
+    const vals = Object.values(x ?? {});
+    // לפעמים enum של TS יוצר גם מספרים וגם מחרוזות, אז מסננים רק מחרוזות
+    return vals.filter((v) => typeof v === 'string') as ShoppingCategory[];
+  }, []);
   const options = React.useMemo(() => {
-    const query = q.trim();
-    if (!query) return SHOPPING_CATEGORIES;
-    return SHOPPING_CATEGORIES.filter((c) => SHOPPING_CATEGORY_LABELS_HE[c].includes(query));
-  }, [q]);
+    const query = String(q ?? '').trim();
+    if (!query) return ALL_CATEGORIES;
 
-  // ===== Bottom Sheet mechanics (Android-safe) =====
-  // 3 snap points: נמוך/אמצע/גבוה
+    return ALL_CATEGORIES.filter((c) =>
+      String(SHOPPING_CATEGORY_LABELS_HE[c] ?? '').includes(query),
+    );
+  }, [q, ALL_CATEGORIES]);
+
+  // ===== Bottom Sheet mechanics =====
   const SNAP_PCTS = React.useMemo(() => [0.35, 0.6, 0.82], []);
   const snapHeights = React.useMemo(
     () => SNAP_PCTS.map((p) => Math.round(SCREEN_H * p)),
@@ -54,24 +110,7 @@ export function CategoryDropdown(props: {
   const [snapIdx, setSnapIdx] = React.useState(1);
   const sheetH = snapHeights[snapIdx];
 
-  // translateY is RELATIVE to the sheet itself:
-  // 0 = open, sheetH = fully hidden (down)
-  const translateY = React.useRef(new Animated.Value(SCREEN_H)).current;
-
-  const openSheet = React.useCallback(
-    (idx: number) => {
-      setSnapIdx(idx);
-      // כשמשנים גובה, מתחילים ממצב "סגור" ואז פותחים ל-0
-      translateY.setValue(snapHeights[idx]);
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 0,
-        speed: 18,
-      }).start();
-    },
-    [snapHeights, translateY],
-  );
+  const translateY = React.useRef(new Animated.Value(snapHeights[1])).current;
 
   const closeSheet = React.useCallback(() => {
     Animated.timing(translateY, {
@@ -80,26 +119,43 @@ export function CategoryDropdown(props: {
       useNativeDriver: true,
     }).start(() => {
       setOpen(false);
+      props.onOpenChange?.(false); // ✅
       setQ('');
     });
-  }, [sheetH, translateY]);
+  }, [props, sheetH, translateY]);
 
-  // כשהמודאל נפתח: open to middle snap
+  const openSheet = React.useCallback(
+    (idx: number) => {
+      const nextIdx = clamp(idx, 0, snapHeights.length - 1);
+      const nextH = snapHeights[nextIdx];
+
+      setSnapIdx(nextIdx);
+      translateY.setValue(nextH);
+
+      requestAnimationFrame(() => {
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          bounciness: 0,
+          speed: 18,
+        }).start();
+      });
+    },
+    [snapHeights, translateY],
+  );
+
   React.useEffect(() => {
     if (!open) return;
-    // חשוב: להבטיח ש-translateY רלוונטי לגובה הסנאפ שנבחר
-    requestAnimationFrame(() => openSheet(1));
+    openSheet(1);
   }, [open, openSheet]);
 
-  // Drag logic:
-  // - drag down moves translateY toward sheetH (close)
-  // - drag up: אם גררת מספיק למעלה -> snap גבוה יותר (גדל)
   const pan = React.useRef({ startY: 0, startIdx: 1 }).current;
 
   const goSnap = React.useCallback(
     (idx: number) => {
-      const next = clamp(idx, 0, snapHeights.length - 1);
-      setSnapIdx(next);
+      const nextIdx = clamp(idx, 0, snapHeights.length - 1);
+      setSnapIdx(nextIdx);
+
       Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
@@ -121,27 +177,17 @@ export function CategoryDropdown(props: {
           });
         },
         onPanResponderMove: (_e, g) => {
-          // only allow dragging down to close visually
-          // (drag up handled by snapping on release)
           const next = clamp(pan.startY + g.dy, 0, sheetH);
           translateY.setValue(next);
         },
         onPanResponderRelease: (_e, g) => {
           translateY.stopAnimation((val: number) => {
-            // if pulled down enough or fast -> close
             const closeEnough = g.vy > 1.2 || val > sheetH * 0.35;
             if (closeEnough) return closeSheet();
 
-            // otherwise decide snap by dy direction
-            // drag up (dy negative) => increase height (higher snap)
-            // drag down small => keep same snap
-            if (g.dy < -40) {
-              return goSnap(pan.startIdx + 1);
-            }
-            if (g.dy > 40) {
-              return goSnap(pan.startIdx - 1);
-            }
-            // return to current snap
+            if (g.dy < -40) return goSnap(pan.startIdx + 1);
+            if (g.dy > 40) return goSnap(pan.startIdx - 1);
+
             Animated.spring(translateY, {
               toValue: 0,
               useNativeDriver: true,
@@ -154,61 +200,53 @@ export function CategoryDropdown(props: {
     [closeSheet, goSnap, pan, sheetH, snapIdx, translateY],
   );
 
-  // Backdrop opacity by translateY (0 -> 0.55, sheetH -> 0)
   const backdropOpacity = translateY.interpolate({
     inputRange: [0, sheetH],
     outputRange: [0.55, 0],
     extrapolate: 'clamp',
   });
 
-  return (
-    <View style={{ gap: 8 }}>
-      <AppText tone="muted">{label}</AppText>
+  const Overlay = (
+    <View style={styles.overlayRoot} pointerEvents="box-none">
+      {/* Backdrop */}
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} pointerEvents="auto">
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet} />
+      </Animated.View>
 
-      <Pressable
-        onPress={() => setOpen(true)}
-        style={({ pressed }) => [styles.trigger, pressed && { opacity: 0.9 }]}
+      {/* Sheet */}
+      <Animated.View
+        style={[
+          styles.sheet,
+          { height: sheetH, transform: [{ translateY }] },
+          Platform.OS === 'web' ? ({ position: 'fixed' } as any) : undefined,
+        ]}
       >
-        <AppText style={{ fontWeight: '900' }}>{selectedLabel}</AppText>
-        <AppText tone="muted" style={{ fontWeight: '900' }}>
-          ▾
-        </AppText>
-      </Pressable>
+        <View {...panResponder.panHandlers} style={styles.dragArea}>
+          <View style={styles.grabber} />
+          <AppText tone="muted" style={{ marginTop: 6, fontWeight: '800' }}>
+            גרור למעלה/למטה
+          </AppText>
+        </View>
 
-      <Modal visible={open} transparent animationType="none" onRequestClose={closeSheet}>
-        {/* Backdrop */}
-        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet} />
-        </Animated.View>
+        <View style={styles.sheetHeader}>
+          <AppText style={{ fontSize: 18, fontWeight: '900' }}>בחר קטגוריה</AppText>
+          <Pressable onPress={closeSheet} style={styles.closeBtn}>
+            <AppText style={{ fontWeight: '900' }}>✕</AppText>
+          </Pressable>
+        </View>
 
-        {/* Sheet */}
-        <Animated.View style={[styles.sheet, { height: sheetH, transform: [{ translateY }] }]}>
-          {/* Drag area */}
-          <View {...panResponder.panHandlers} style={styles.dragArea}>
-            <View style={styles.grabber} />
-            <AppText tone="muted" style={{ marginTop: 6, fontWeight: '800' }}>
-              גרור למעלה/למטה
-            </AppText>
-          </View>
-
-          {/* Header */}
-          <View style={styles.sheetHeader}>
-            <AppText style={{ fontSize: 18, fontWeight: '900' }}>בחר קטגוריה</AppText>
-            <Pressable onPress={closeSheet} style={styles.closeBtn}>
-              <AppText style={{ fontWeight: '900' }}>✕</AppText>
-            </Pressable>
-          </View>
-
-          {/* Search */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
           <TextInput
             value={q}
             onChangeText={setQ}
             placeholder="חיפוש…"
             placeholderTextColor={theme.colors.muted}
-            style={styles.search}
+            style={[styles.search, isRTL ? styles.textInputRTL : styles.textInputLTR]}
           />
 
-          {/* Options list */}
           <FlatList
             data={['__NONE__', ...options] as any[]}
             keyExtractor={(item) => String(item)}
@@ -226,7 +264,9 @@ export function CategoryDropdown(props: {
                     }}
                     style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
                   >
-                    <AppText tone="muted">ללא קטגוריה</AppText>
+                    <AppText tone="muted" dir={isRTL ? 'rtl' : 'ltr'}>
+                      ללא קטגוריה
+                    </AppText>
                   </Pressable>
                 );
               }
@@ -246,7 +286,12 @@ export function CategoryDropdown(props: {
                     pressed && styles.optionRowPressed,
                   ]}
                 >
-                  <AppText style={{ fontWeight: isOn ? '900' : '800' }}>
+                  <AppText
+                    style={[
+                      { fontWeight: isOn ? '900' : '800' },
+                      isRTL ? styles.textRTL : styles.textLTR,
+                    ]}
+                  >
                     {SHOPPING_CATEGORY_LABELS_HE[c]}
                   </AppText>
                   {isOn ? <AppText style={{ fontWeight: '900' }}>✓</AppText> : null}
@@ -254,8 +299,50 @@ export function CategoryDropdown(props: {
               );
             }}
           />
-        </Animated.View>
-      </Modal>
+        </KeyboardAvoidingView>
+      </Animated.View>
+    </View>
+  );
+
+  return (
+    <View style={{ gap: 8 }}>
+      <AppText tone="muted" dir={isRTL ? 'rtl' : 'ltr'}>
+        {label}
+      </AppText>
+
+      <Pressable
+        onPress={
+          measureOnly
+            ? undefined
+            : () => {
+                props.onOpenChange?.(true);
+                setOpen(true);
+              }
+        }
+        style={({ pressed }) => [styles.trigger, pressed && { opacity: 0.9 }]}
+      >
+        <AppText style={[styles.triggerText, isRTL ? styles.textRTL : styles.textLTR]}>
+          {selectedLabel}
+        </AppText>
+        <AppText tone="muted" style={{ fontWeight: '900' }}>
+          ▾
+        </AppText>
+      </Pressable>
+
+      {measureOnly || !open ? null : Platform.OS === 'web' ? (
+        <WebPortal>{Overlay}</WebPortal>
+      ) : (
+        <Modal
+          visible={open}
+          transparent
+          animationType="none"
+          onRequestClose={closeSheet}
+          presentationStyle="overFullScreen"
+          statusBarTranslucent
+        >
+          {Overlay}
+        </Modal>
+      )}
     </View>
   );
 }
@@ -272,6 +359,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#0F172A',
   },
+  triggerText: { fontWeight: '900', flex: 1, minWidth: 0 },
+
+  // root overlay wrapper (important for web portal + native modal)
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
+    zIndex: 2147483647,
+  } as any,
 
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -288,6 +383,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B1220',
     paddingHorizontal: 14,
     paddingTop: 8,
+
+    zIndex: 2147483647,
+    elevation: 999999,
+
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0px -10px 30px rgba(0,0,0,0.35)' } as any)
       : {
@@ -295,9 +394,9 @@ const styles = StyleSheet.create({
           shadowOpacity: 0.25,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: -8 },
-          elevation: 8,
+          elevation: 999999,
         }),
-  },
+  } as any,
 
   dragArea: {
     alignItems: 'center',
@@ -361,4 +460,9 @@ const styles = StyleSheet.create({
   optionRowPressed: {
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+
+  textRTL: { textAlign: 'right', writingDirection: 'rtl' } as any,
+  textLTR: { textAlign: 'left', writingDirection: 'ltr' } as any,
+  textInputRTL: { textAlign: 'right', writingDirection: 'rtl' } as any,
+  textInputLTR: { textAlign: 'left', writingDirection: 'ltr' } as any,
 });

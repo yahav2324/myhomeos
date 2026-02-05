@@ -13,7 +13,6 @@ import { WsProvider } from '../shared/ws/WsProvider';
 import { useLangStore } from '../shared/i18n/lang.store';
 
 import { AuthPhoneScreen } from '../features/auth/screens/AuthPhoneScreen';
-import { AuthOtpScreen } from '../features/auth/screens/AuthOtpScreen';
 import { AuthGoogleScreen } from '../features/auth/screens/AuthGoogleScreen';
 import { CreateHouseholdScreen } from '../features/households/screens/CreateHouseholdScreen';
 
@@ -94,7 +93,7 @@ export function RootNavigator() {
           component={AuthPhoneScreen}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="AuthOtp" component={AuthOtpScreen} options={{ headerShown: false }} />
+        {/* <Stack.Screen name="AuthOtp" component={AuthOtpScreen} options={{ headerShown: false }} /> */}
 
         {/* ONBOARDING */}
         <Stack.Screen

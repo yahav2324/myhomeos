@@ -7,9 +7,11 @@ export function CreateHouseholdScreen({ navigation }: any) {
   const [name, setName] = useState('משפחת זמיר');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   const setSession = useAuthStore((s) => s.setSession);
   const accessToken = useAuthStore((s) => s.accessToken);
   const refreshToken = useAuthStore((s) => s.refreshToken);
+  const userName = useAuthStore((s) => s.userName);
 
   const onCreate = async () => {
     setErr(null);
@@ -26,7 +28,9 @@ export function CreateHouseholdScreen({ navigation }: any) {
       }
 
       // needsOnboarding becomes false (tokens unchanged)
-      if (accessToken && refreshToken) await setSession(accessToken, refreshToken, false);
+      if (accessToken && refreshToken) {
+        await setSession(accessToken, refreshToken, userName ?? '', false); // ✅ 4 args
+      }
 
       navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
     } catch (e: any) {
