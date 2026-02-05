@@ -118,4 +118,10 @@ export class ShoppingController {
     const householdId = this.getHouseholdId(req);
     return this.shopping.deleteItem(householdId, listId, itemId);
   }
+
+  @Post('import')
+  importGuest(@Req() req: any, @Body() body: { lists: any[] }) {
+    const householdId = this.getHouseholdId(req);
+    return this.shopping.importGuestData(householdId, body);
+  }
 }

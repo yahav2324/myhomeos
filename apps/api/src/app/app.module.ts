@@ -9,6 +9,7 @@ import { TermsModule } from '../terms';
 import { AdminCatalogModule } from '../admin-catalog/admin-catalog.module';
 import { ConfigModule } from '@nestjs/config';
 import { ShoppingModule } from '../shopping/shopping.module';
+import { HealthModule } from '../health/health.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ShoppingModule } from '../shopping/shopping.module';
     TermsModule,
     AdminCatalogModule,
     ShoppingModule,
+    HealthModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', 'apps/api/.env'],

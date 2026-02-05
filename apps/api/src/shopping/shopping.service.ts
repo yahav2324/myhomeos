@@ -144,8 +144,9 @@ export class ShoppingService {
     } catch (e: any) {
       // Prisma unique violation
       if (e?.code === 'P2002') {
-        row = await this.prisma.shoppingItem.findFirst({
-          where: { listId, dedupeKey },
+        row = await this.prisma.shoppingItem.update({
+          where: { listId_dedupeKey: { listId, dedupeKey } }, // דורש unique composite בשם כזה בפריזמה
+          data: { qty, unit, category, extra }, // מה שתרצה “לרענן”
           select: {
             id: true,
             termId: true,
@@ -159,11 +160,7 @@ export class ShoppingService {
             updatedAt: true,
           },
         });
-
-        if (!row) throw e; // נדיר מאוד, אבל נשמור בטוח
-      } else {
-        throw e;
-      }
+      } else throw e;
     }
 
     // bump list updatedAt
@@ -279,18 +276,101 @@ export class ShoppingService {
     return Math.round(n * 100) / 100;
   }
 
-  private toPrismaUnit(u?: ApiUnit): ShoppingUnit {
-    // default PCS
-    if (!u) return ShoppingUnit.PCS;
+  private toPrismaUnit(u?: ApiUnit | string): ShoppingUnit {
+    const x = String(u ?? '')
+      .trim()
+      .toUpperCase();
 
-    // validate
-    if (u === 'PCS') return ShoppingUnit.PCS;
-    if (u === 'G') return ShoppingUnit.G;
-    if (u === 'KG') return ShoppingUnit.KG;
-    if (u === 'ML') return ShoppingUnit.ML;
-    if (u === 'L') return ShoppingUnit.L;
+    if (x === 'PCS') return ShoppingUnit.PCS;
+    if (x === 'G') return ShoppingUnit.G;
+    if (x === 'KG') return ShoppingUnit.KG;
+    if (x === 'ML') return ShoppingUnit.ML;
+    if (x === 'L') return ShoppingUnit.L;
 
     return ShoppingUnit.PCS;
+  }
+
+  async importGuestData(
+    householdId: string,
+    body: { lists: Array<{ listLocalId: string; name: string; items: any[] }> },
+  ) {
+    const lists = Array.isArray(body?.lists) ? body.lists : [];
+    const listIdMap: Record<string, string> = {};
+    const itemIdMap: Record<string, string> = {};
+
+    for (const l of lists) {
+      const name = String(l?.name ?? '').trim() || 'Shopping List';
+      const listLocalId = String(l?.listLocalId ?? '');
+      if (!listLocalId) continue;
+
+      // Create new list in this household (simple). If you want dedupe by name, you can.
+      const createdList = await this.prisma.shoppingList.create({
+        data: { householdId, name },
+        select: { id: true },
+      });
+
+      listIdMap[listLocalId] = createdList.id;
+
+      const items = Array.isArray(l?.items) ? l.items : [];
+      for (const it of items) {
+        const itemLocalId = String(it?.itemLocalId ?? '');
+        if (!itemLocalId) continue;
+
+        const text = String(it?.text ?? '').trim();
+        if (!text) continue;
+
+        const termId = it?.termId ? String(it.termId) : null;
+        const qty = this.safeQty(it?.qty);
+        const unit = this.toPrismaUnit(it?.unit);
+        const checked = Boolean(it?.checked ?? false);
+        const category = it?.category ?? null;
+        const extra = it?.extra ?? null;
+
+        const normalizedText = normalize(text);
+        const dedupeKey = makeDedupeKey(text, termId);
+
+        // Create with dedupe (same as addItem)
+        let row: any;
+        try {
+          row = await this.prisma.shoppingItem.create({
+            data: {
+              listId: createdList.id,
+              termId,
+              text,
+              normalizedText,
+              dedupeKey,
+              qty,
+              unit,
+              checked,
+              category,
+              extra,
+            },
+            select: { id: true },
+          });
+        } catch (e: any) {
+          if (e?.code === 'P2002') {
+            row = await this.prisma.shoppingItem.findFirst({
+              where: { listId: createdList.id, dedupeKey },
+              select: { id: true },
+            });
+            if (!row) throw e;
+          } else {
+            throw e;
+          }
+        }
+
+        itemIdMap[itemLocalId] = row.id;
+      }
+
+      // bump list
+      await this.prisma.shoppingList.update({
+        where: { id: createdList.id },
+        data: { updatedAt: new Date() },
+        select: { id: true },
+      });
+    }
+
+    return { ok: true, data: { listIdMap, itemIdMap } };
   }
 }
 
