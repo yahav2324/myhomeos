@@ -1024,7 +1024,17 @@ export function ShoppingListScreen({ route }: Props) {
         ) : null}
       </>
     ),
-    [category, unit, qty, isRTL, extraKeys.length, name, wouldDuplicate, selectedTermId],
+    [
+      isRTL,
+      category,
+      unit,
+      qty,
+      extraKeys.length,
+      name,
+      wouldDuplicate,
+      selectedTermId,
+      snapExtraTo,
+    ],
   );
 
   const ListHeader = React.useMemo(() => {
@@ -1138,19 +1148,7 @@ export function ShoppingListScreen({ route }: Props) {
                 </View>
               </View>
 
-              <View
-                pointerEvents="none"
-                style={styles.extraMeasureBox}
-                onLayout={(e) => {
-                  const h = Math.ceil(e.nativeEvent.layout.height);
-                  if (h > 0 && h !== extraMaxHRef.current) {
-                    extraMaxHRef.current = h;
-                    extraH.stopAnimation((val: number) => {
-                      if (val > 0.01) extraH.setValue(h);
-                    });
-                  }
-                }}
-              >
+              <View pointerEvents="none" style={styles.extraMeasureBox} onLayout={}>
                 <ExtraContent measureOnly />
               </View>
 

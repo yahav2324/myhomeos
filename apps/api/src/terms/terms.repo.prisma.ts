@@ -1,6 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TermScope, TermStatus, VoteValue } from '@prisma/client';
+import { ShoppingCategory, ShoppingUnit, TermScope, TermStatus, VoteValue } from '@prisma/client';
+
+const unitToApi = (u: any): string | null => {
+  if (!u) return null;
+  const s = String(u);
+  if (s === 'PCS') return 'pcs';
+  if (s === 'G') return 'g';
+  if (s === 'KG') return 'kg';
+  if (s === 'ML') return 'ml';
+  if (s === 'L') return 'l';
+  return null;
+};
 
 @Injectable()
 export class TermsRepoPrisma {
@@ -68,7 +79,14 @@ export class TermsRepoPrisma {
 
     const termIds = Array.from(new Set(matches.map((m) => m.termId)));
     if (termIds.length === 0) return [];
+    const myDefaults = args.userId
+      ? await this.prisma.termUserDefaults.findMany({
+          where: { userId: args.userId, termId: { in: termIds } },
+          select: { termId: true, category: true, unit: true, qty: true, extras: true },
+        })
+      : [];
 
+    const myDefaultsByTerm = new Map(myDefaults.map((d) => [d.termId, d]));
     const grouped = await this.prisma.termVote.groupBy({
       by: ['termId', 'vote'],
       where: { termId: { in: termIds } },
@@ -104,13 +122,21 @@ export class TermsRepoPrisma {
         t.translations[0]?.text ??
         m.text;
 
+      const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
+
       return {
         id: t.id,
         text: textLang,
-        status: t.status, // LIVE/PENDING/APPROVED/REJECTED
+        status: t.status,
         upCount: c.up,
         downCount: c.down,
         myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
+
+        // ✅ defaults *פר משתמש*
+        category: d?.category ?? null,
+        unit: unitToApi(d?.unit),
+        qty: d?.qty ?? null,
+        extras: (d?.extras as any) ?? null,
       };
     });
 
@@ -154,6 +180,10 @@ export class TermsRepoPrisma {
     scope: TermScope;
     ownerUserId?: string | null;
     status: TermStatus;
+    defaultCategory?: ShoppingCategory | null;
+    defaultUnit?: ShoppingUnit | null;
+    defaultQty?: number | null;
+    defaultExtras?: Record<string, string> | null;
     translations: Array<{ lang: string; text: string; normalized: string; source: string }>;
   }) {
     // ✅ מניעת כפולים:
@@ -181,6 +211,10 @@ export class TermsRepoPrisma {
         scope: args.scope,
         ownerUserId: args.ownerUserId ?? null,
         status: args.status,
+        defaultCategory: args.defaultCategory ?? null,
+        defaultUnit: args.defaultUnit ?? null,
+        defaultQty: args.defaultQty ?? null,
+        defaultExtras: args.defaultExtras ?? null,
         translations: { create: args.translations },
       },
       include: { translations: true },
@@ -201,6 +235,35 @@ export class TermsRepoPrisma {
         text: args.text,
         normalized: args.normalized,
         source: args.source,
+      },
+    });
+  }
+
+  async upsertMyDefaults(args: {
+    termId: string;
+    userId: string;
+    category: ShoppingCategory | null;
+    unit: ShoppingUnit | null;
+    qty: number | null;
+    extras: Record<string, string> | null;
+  }) {
+    return this.prisma.termUserDefaults.upsert({
+      where: {
+        userId_termId: { userId: args.userId, termId: args.termId },
+      },
+      update: {
+        category: args.category,
+        unit: args.unit,
+        qty: args.qty,
+        extras: args.extras,
+      },
+      create: {
+        userId: args.userId,
+        termId: args.termId,
+        category: args.category,
+        unit: args.unit,
+        qty: args.qty,
+        extras: args.extras,
       },
     });
   }

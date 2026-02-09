@@ -1,3 +1,4 @@
+import { ShoppingUnit } from '@prisma/client';
 import { sqlAll, sqlGet, sqlRun } from '../../../shared/db/sqlite';
 import type { ShoppingCategory } from '@smart-kitchen/contracts';
 
@@ -48,16 +49,14 @@ export function unitToApi(u: Unit): ApiUnit {
   return 'PCS';
 }
 
-export function unitFromApi(u: string): Unit {
-  const x = String(u ?? 'PCS')
-    .trim()
-    .toUpperCase();
-  if (x === 'G') return 'g';
-  if (x === 'ML') return 'ml';
-  if (x === 'KG') return 'kg';
-  if (x === 'L') return 'l';
-  if (x === 'PCS') return 'pcs';
-  return 'pcs';
+export function unitFromApi(u: any): ShoppingUnit | null {
+  const s = String(u ?? '').toLowerCase();
+  if (s === 'pcs') return ShoppingUnit.PCS;
+  if (s === 'g') return ShoppingUnit.G;
+  if (s === 'kg') return ShoppingUnit.KG;
+  if (s === 'ml') return ShoppingUnit.ML;
+  if (s === 'l') return ShoppingUnit.L;
+  return null;
 }
 
 function norm(s: string) {

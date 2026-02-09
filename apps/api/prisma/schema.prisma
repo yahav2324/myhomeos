@@ -40,7 +40,7 @@ enum HouseholdRole {
 }
 
 enum ShoppingUnit {
-  PCS  // יח'
+  PCS // יח'
   G
   KG
   ML
@@ -95,15 +95,15 @@ model TelemetryEvent {
 }
 
 model User {
-  id                String    @id @default(uuid())
+  id String @id @default(uuid())
 
   // ✅ was required, now optional (כי Google login בלי טלפון)
-  phoneE164         String?   @unique
+  phoneE164 String? @unique
 
   // ✅ NEW: Google user id (sub)
-  googleSub         String?   @unique
-  email             String?   // לא חייב unique (אבל אפשר אם בא לך)
-  
+  googleSub String? @unique
+  email     String? // לא חייב unique (אבל אפשר אם בא לך)
+
   displayName       String?
   avatarUrl         String?
   activeHouseholdId String?
@@ -115,8 +115,9 @@ model User {
   sessions    AuthSession[]
   memberships HouseholdMember[]
 
-  trust UserTrust?
+  trust            UserTrust?
   shoppingDefaults Json?
+  termDefaults     TermUserDefaults[] // ✅ OK
 
   @@index([activeHouseholdId])
 }
@@ -216,6 +217,22 @@ enum VoteValue {
   DOWN
 }
 
+model TermUserDefaults {
+  userId   String
+  termId   String
+
+  category ShoppingCategory?
+  unit     ShoppingUnit?
+  qty      Float?
+  extras   Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([userId, termId])                 // ✅ זה מייצר where unique בשם userId_termId
+  @@index([termId])
+}
+
 model Term {
   id          String     @id @default(uuid())
   scope       TermScope  @default(GLOBAL)
@@ -226,11 +243,18 @@ model Term {
   approvedByAdmin Boolean   @default(false)
   approvedAt      DateTime?
 
+  // ✅ NEW: defaults for shopping
+  defaultCategory ShoppingCategory?
+  defaultUnit     ShoppingUnit?
+  defaultQty      Float?
+  defaultExtras   Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   translations TermTranslation[]
   votes        TermVote[]
+  userDefaults TermUserDefaults[] // ✅ ADD THIS
 
   @@index([status])
   @@index([scope, ownerUserId])
@@ -338,7 +362,6 @@ model ShoppingList {
   @@index([householdId, updatedAt])
 }
 
-
 enum ShoppingCategory {
   VEGETABLES
   FRUITS
@@ -370,20 +393,19 @@ model ShoppingItem {
 
   qty     Float
   unit    ShoppingUnit
-  checked Boolean @default(false)
+  checked Boolean      @default(false)
 
-  category  ShoppingCategory?
-  extra Json?
+  category ShoppingCategory?
+  extra    Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([listId, dedupeKey])     // ✅ מונע כפילויות תמיד
+  @@unique([listId, dedupeKey]) // ✅ מונע כפילויות תמיד
   @@index([listId, checked])
   @@index([listId, updatedAt])
   @@index([termId])
 }
-
 
 model ShoppingSettings {
   id          String    @id @default(uuid())

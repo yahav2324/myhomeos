@@ -1,6 +1,18 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { TermsService } from './terms.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { AuthGuard } from '@nestjs/passport';
 
 function getUserIdOrNull(req: any): string | null {
   return req?.user?.id ?? null;
@@ -12,11 +24,21 @@ function getUserIdOrThrow(req: any): string {
   return id;
 }
 
+@Injectable()
+export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
+  handleRequest(err: any, user: any) {
+    // אם אין טוקן / לא תקין – פשוט נחזיר null ולא נזרוק
+    if (err) return null;
+    return user ?? null;
+  }
+}
+
 @Controller()
 export class TermsController {
   constructor(private readonly terms: TermsService) {}
 
   // GET /terms/suggest?q=ri&lang=en&limit=10
+  @UseGuards(OptionalJwtAuthGuard)
   @Get('/terms/suggest')
   async suggest(
     @Query('q') q: string,
@@ -44,6 +66,13 @@ export class TermsController {
   async create(@Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);
     return this.terms.create(body, userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/terms/:id/my-defaults')
+  async upsertMyDefaults(@Param('id') id: string, @Body() body: unknown, @Req() req: any) {
+    const userId = getUserIdOrThrow(req);
+    return this.terms.upsertMyDefaults(id, body, userId);
   }
 
   // POST /terms/:id/vote  (requires auth)

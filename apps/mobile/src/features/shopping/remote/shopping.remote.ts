@@ -118,3 +118,49 @@ export async function apiImportGuest(payload: any): Promise<any> {
   ensureOk(res, json);
   return json?.data ?? json;
 }
+
+type ApiUnit = 'PCS' | 'G' | 'KG' | 'ML' | 'L';
+
+export async function apiCreateTerm(body: {
+  text: string;
+  lang?: string;
+  // defaults
+  category?: string | null;
+  unit?: ApiUnit | null;
+  qty?: number | null;
+  extras?: Record<string, string> | null;
+
+  // אם אתה רוצה גם את השמות החדשים
+  defaultCategory?: string | null;
+  defaultUnit?: ApiUnit | null;
+  defaultQty?: number | null;
+  defaultExtras?: Record<string, string> | null;
+}): Promise<{ id: string }> {
+  const res = await authedFetch(`${BASE}/terms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await parseJsonSafe(res);
+  ensureOk(res, json);
+  const data = json?.data ?? json;
+  return { id: String(data?.id ?? data?.termId ?? '') };
+}
+
+export async function apiUpsertMyDefaults(
+  termId: string,
+  body: {
+    category?: string | null;
+    unit?: ApiUnit | null;
+    qty?: number | null;
+    extras?: Record<string, string> | null;
+  },
+): Promise<void> {
+  const res = await authedFetch(`${BASE}/terms/${encodeURIComponent(termId)}/my-defaults`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await parseJsonSafe(res);
+  ensureOk(res, json);
+}

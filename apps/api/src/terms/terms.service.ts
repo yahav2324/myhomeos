@@ -1,13 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TermScope, TermStatus, VoteValue } from '@prisma/client';
+import { ShoppingCategory, ShoppingUnit, TermScope, TermStatus, VoteValue } from '@prisma/client';
 import { z } from 'zod';
 import { TermsRepoPrisma } from './terms.repo.prisma';
+import { UpsertMyDefaultsSchema } from '@smart-kitchen/contracts';
 
 // ---- Zod schemas ----
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
   lang: z.string().min(2).max(10).optional(), // "he" | "en" ...
   scope: z.enum(['GLOBAL', 'PRIVATE']).optional(),
+  category: z.nativeEnum(ShoppingCategory).optional(),
+  unit: z.nativeEnum(ShoppingUnit).optional(),
+  qty: z.number().positive().optional(),
+  extras: z.record(z.string(), z.string()).optional(),
+
+  // new names from client (optional)
+  defaultCategory: z.nativeEnum(ShoppingCategory).optional(),
+  defaultUnit: z.nativeEnum(ShoppingUnit).optional(),
+  defaultQty: z.number().positive().optional(),
+  defaultExtras: z.record(z.string(), z.string()).optional(),
 });
 
 const VoteBodySchema = z.object({
@@ -88,7 +99,10 @@ export class TermsService {
     const text = parsed.data.text.trim();
     const lang = (parsed.data.lang?.trim() || detectLang(text) || 'und').toLowerCase();
     const scope = (parsed.data.scope ?? 'GLOBAL') as 'GLOBAL' | 'PRIVATE';
-
+    const cat = parsed.data.defaultCategory ?? parsed.data.category ?? null;
+    const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
+    const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
+    const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? null;
     // ✅ GLOBAL חדש נכנס כ-LIVE כדי שכולם יוכלו לראות ולדרג
     // ✅ PRIVATE נשאר פרטי ליוצר
     const term = await this.repo.createTerm({
@@ -96,6 +110,10 @@ export class TermsService {
       ownerUserId: scope === 'PRIVATE' ? userId : null,
       status: scope === 'PRIVATE' ? TermStatus.PENDING : TermStatus.LIVE,
       translations: [{ lang, text, normalized: normalizeText(text), source: 'USER' }],
+      defaultCategory: cat,
+      defaultUnit: unit,
+      defaultQty: qty,
+      defaultExtras: extras,
     });
 
     // Auto translate to English (optional)
@@ -123,6 +141,27 @@ export class TermsService {
       ok: true,
       data: fresh,
     };
+  }
+
+  async upsertMyDefaults(termId: string, body: unknown, userId: string) {
+    const parsed = UpsertMyDefaultsSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+
+    const term = await this.repo.findTermById(termId);
+    if (!term) throw new NotFoundException('Term not found');
+
+    const d = parsed.data;
+
+    const row = await this.repo.upsertMyDefaults({
+      termId,
+      userId,
+      category: d.category ?? null,
+      unit: d.unit ?? null,
+      qty: d.qty ?? null,
+      extras: d.extras ?? null,
+    });
+
+    return { ok: true, data: row };
   }
 
   async vote(termId: string, body: unknown, userId: string) {
