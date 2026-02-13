@@ -36,6 +36,16 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
 @Controller()
 export class TermsController {
   constructor(private readonly terms: TermsService) {}
+  @UseGuards(JwtAuthGuard)
+  @Put('/terms/:id/image')
+  async setImage(
+    @Param('id') id: string,
+    @Body() body: { imageUrl: string | null },
+    @Req() req: any,
+  ) {
+    const userId = getUserIdOrThrow(req);
+    return this.terms.setTermImage(id, body.imageUrl ?? null, userId);
+  }
 
   // GET /terms/suggest?q=ri&lang=en&limit=10
   @UseGuards(OptionalJwtAuthGuard)

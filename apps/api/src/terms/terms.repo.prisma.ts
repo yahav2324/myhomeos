@@ -31,37 +31,49 @@ export class TermsRepoPrisma {
   }
 
   // ---- Suggest ----
+  // ---- Suggest ----
   async suggest(args: { qNorm: string; lang: string; limit: number; userId?: string | null }) {
-    const matches = await this.prisma.termTranslation.findMany({
+    const qNorm = (args.qNorm ?? '').trim();
+    if (!qNorm) return [];
+
+    const baseTermWhere = {
+      OR: [
+        // ✅ גלובליים שנראים לכולם
+        {
+          scope: TermScope.GLOBAL,
+          status: { in: [TermStatus.LIVE, TermStatus.APPROVED] },
+        },
+
+        // ✅ PENDING/PRIVATE נראה רק ליוצר
+        args.userId
+          ? {
+              scope: TermScope.PRIVATE,
+              ownerUserId: args.userId,
+              status: {
+                in: [TermStatus.PENDING, TermStatus.LIVE, TermStatus.APPROVED],
+              },
+            }
+          : undefined,
+
+        // ✅ אם תרצה שגם PENDING גלובלי יראה רק ליוצר (לריסאבמיט)
+        args.userId
+          ? {
+              scope: TermScope.GLOBAL,
+              status: TermStatus.PENDING,
+              ownerUserId: args.userId,
+            }
+          : undefined,
+      ].filter(Boolean) as any,
+    };
+
+    // ✅ שלב 1: startsWith (מהיר + הכי רלוונטי)
+    const starts = await this.prisma.termTranslation.findMany({
       where: {
         lang: args.lang,
-        normalized: { startsWith: args.qNorm },
-        term: {
-          OR: [
-            // ✅ גלובליים שנראים לכולם
-            { scope: TermScope.GLOBAL, status: { in: [TermStatus.LIVE, TermStatus.APPROVED] } },
-
-            // ✅ PENDING/PRIVATE נראה רק ליוצר
-            args.userId
-              ? {
-                  scope: TermScope.PRIVATE,
-                  ownerUserId: args.userId,
-                  status: { in: [TermStatus.PENDING, TermStatus.LIVE, TermStatus.APPROVED] },
-                }
-              : undefined,
-
-            // ✅ אם תרצה שגם PENDING גלובלי יראה רק ליוצר (לריסאבמיט)
-            args.userId
-              ? {
-                  scope: TermScope.GLOBAL,
-                  status: TermStatus.PENDING,
-                  ownerUserId: args.userId, // אם תשתמש בזה בעתיד (כרגע ownerUserId לרוב null בגלובלי)
-                }
-              : undefined,
-          ].filter(Boolean) as any,
-        },
+        normalized: { startsWith: qNorm },
+        term: baseTermWhere as any,
       },
-      take: args.limit * 3,
+      take: args.limit * 4,
       include: {
         term: {
           select: {
@@ -69,6 +81,7 @@ export class TermsRepoPrisma {
             scope: true,
             ownerUserId: true,
             status: true,
+            imageUrl: true, // ✅ הוסף
             approvedByAdmin: true,
             translations: { select: { lang: true, text: true } },
           },
@@ -77,8 +90,40 @@ export class TermsRepoPrisma {
       orderBy: [{ normalized: 'asc' }],
     });
 
+    // ✅ שלב 2: contains (רק אם חסר תוצאות) — מאפשר "אבקת שום"
+    const needMore = starts.length < args.limit;
+    const contains =
+      needMore && qNorm.length >= 2
+        ? await this.prisma.termTranslation.findMany({
+            where: {
+              lang: args.lang,
+              normalized: { contains: qNorm },
+              term: baseTermWhere as any,
+            },
+            take: args.limit * 12, // contains רחב יותר
+            include: {
+              term: {
+                select: {
+                  id: true,
+                  scope: true,
+                  ownerUserId: true,
+                  status: true,
+                  imageUrl: true, // ✅ הוסף
+                  approvedByAdmin: true,
+                  translations: { select: { lang: true, text: true } },
+                },
+              },
+            },
+            orderBy: [{ normalized: 'asc' }],
+          })
+        : [];
+
+    // מאחדים: starts קודם, ואז contains (כולל כפילויות אפשריות)
+    const matches = [...starts, ...contains];
+
     const termIds = Array.from(new Set(matches.map((m) => m.termId)));
     if (termIds.length === 0) return [];
+
     const myDefaults = args.userId
       ? await this.prisma.termUserDefaults.findMany({
           where: { userId: args.userId, termId: { in: termIds } },
@@ -87,6 +132,7 @@ export class TermsRepoPrisma {
       : [];
 
     const myDefaultsByTerm = new Map(myDefaults.map((d) => [d.termId, d]));
+
     const grouped = await this.prisma.termVote.groupBy({
       by: ['termId', 'vote'],
       where: { termId: { in: termIds } },
@@ -127,6 +173,7 @@ export class TermsRepoPrisma {
       return {
         id: t.id,
         text: textLang,
+        normalized: m.normalized, // ✅ חשוב ל-rank
         status: t.status,
         upCount: c.up,
         downCount: c.down,
@@ -137,11 +184,16 @@ export class TermsRepoPrisma {
         unit: unitToApi(d?.unit),
         qty: d?.qty ?? null,
         extras: (d?.extras as any) ?? null,
+        imageUrl: (t as any).imageUrl ?? null, // ✅ הוסף
       };
     });
 
-    // מיון: APPROVED לפני LIVE לפני PENDING (למשתמש)
+    // ✅ דירוג: startsWith קודם, ואז status, ואז score, ואז אלפביתי
     out.sort((a, b) => {
+      const aStarts = String(a.normalized ?? '').startsWith(qNorm) ? 1 : 0;
+      const bStarts = String(b.normalized ?? '').startsWith(qNorm) ? 1 : 0;
+      if (aStarts !== bStarts) return bStarts - aStarts;
+
       const rank = (s: TermStatus) =>
         s === TermStatus.APPROVED
           ? 3
@@ -155,14 +207,14 @@ export class TermsRepoPrisma {
       const rb = rank(b.status as any);
       if (ra !== rb) return rb - ra;
 
-      const sa = a.upCount - a.downCount;
-      const sb = b.upCount - b.downCount;
+      const sa = (a.upCount ?? 0) - (a.downCount ?? 0);
+      const sb = (b.upCount ?? 0) - (b.downCount ?? 0);
       if (sa !== sb) return sb - sa;
 
-      return a.text.localeCompare(b.text);
+      return String(a.text ?? '').localeCompare(String(b.text ?? ''));
     });
 
-    // unique by id
+    // ✅ unique by id + limit
     const seen = new Set<string>();
     const uniq: typeof out = [];
     for (const x of out) {
@@ -180,6 +232,7 @@ export class TermsRepoPrisma {
     scope: TermScope;
     ownerUserId?: string | null;
     status: TermStatus;
+    imageUrl?: string | null; // ✅ הוסף
     defaultCategory?: ShoppingCategory | null;
     defaultUnit?: ShoppingUnit | null;
     defaultQty?: number | null;
@@ -212,12 +265,19 @@ export class TermsRepoPrisma {
         ownerUserId: args.ownerUserId ?? null,
         status: args.status,
         defaultCategory: args.defaultCategory ?? null,
+        imageUrl: args.imageUrl ?? null, // ✅ הוסף
         defaultUnit: args.defaultUnit ?? null,
         defaultQty: args.defaultQty ?? null,
         defaultExtras: args.defaultExtras ?? null,
         translations: { create: args.translations },
       },
       include: { translations: true },
+    });
+  }
+  async setTermImage(termId: string, imageUrl: string | null) {
+    return this.prisma.term.update({
+      where: { id: termId },
+      data: { imageUrl },
     });
   }
 

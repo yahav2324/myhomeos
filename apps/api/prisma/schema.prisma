@@ -146,6 +146,8 @@ model AuthSession {
   createdAt        DateTime  @default(now())
   lastUsedAt       DateTime  @default(now())
   revokedAt        DateTime?
+  expiresAt DateTime
+
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -238,6 +240,7 @@ model Term {
   scope       TermScope  @default(GLOBAL)
   ownerUserId String? // אם PRIVATE
   status      TermStatus @default(LIVE)
+  imageUrl String? // ✅
 
   // legacy flags (השארתי כדי לא לשבור קוד קיים)
   approvedByAdmin Boolean   @default(false)
@@ -395,6 +398,7 @@ model ShoppingItem {
   unit    ShoppingUnit
   checked Boolean      @default(false)
 
+  imageUrl String?
   category ShoppingCategory?
   extra    Json?
 

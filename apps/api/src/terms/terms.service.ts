@@ -13,6 +13,7 @@ const CreateTermBodySchema = z.object({
   unit: z.nativeEnum(ShoppingUnit).optional(),
   qty: z.number().positive().optional(),
   extras: z.record(z.string(), z.string()).optional(),
+  imageUrl: z.string().url().optional(),
 
   // new names from client (optional)
   defaultCategory: z.nativeEnum(ShoppingCategory).optional(),
@@ -79,6 +80,19 @@ export class TermsService {
     };
   }
 
+  async setTermImage(termId: string, imageUrl: string | null, userId: string) {
+    const term = await this.repo.findTermById(termId);
+    if (!term) throw new NotFoundException('Term not found');
+
+    // רק הבעלים של מונח פרטי או אדמין יכולים לשנות את התמונה
+    if (term.scope === TermScope.PRIVATE && term.ownerUserId !== userId) {
+      throw new BadRequestException('Not authorized to change image of this term');
+    }
+
+    const updated = await this.repo.setTermImage(termId, imageUrl);
+    return { ok: true, data: updated };
+  }
+
   async suggest(args: { q: string; lang: string; limit: number; userId?: string | null }) {
     const cfg = await this.getCatalogConfig();
 
@@ -103,13 +117,14 @@ export class TermsService {
     const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
     const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
     const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? null;
-    // ✅ GLOBAL חדש נכנס כ-LIVE כדי שכולם יוכלו לראות ולדרג
+    const imageUrl = parsed.data.imageUrl ?? null;
     // ✅ PRIVATE נשאר פרטי ליוצר
     const term = await this.repo.createTerm({
       scope: scope === 'PRIVATE' ? TermScope.PRIVATE : TermScope.GLOBAL,
       ownerUserId: scope === 'PRIVATE' ? userId : null,
       status: scope === 'PRIVATE' ? TermStatus.PENDING : TermStatus.LIVE,
       translations: [{ lang, text, normalized: normalizeText(text), source: 'USER' }],
+      imageUrl,
       defaultCategory: cat,
       defaultUnit: unit,
       defaultQty: qty,

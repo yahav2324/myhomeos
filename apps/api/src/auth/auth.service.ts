@@ -99,10 +99,13 @@ export class AuthService {
 
     const refreshToken = makeRefreshToken();
     const refreshTokenHash = makeRefreshTokenHash(refreshToken, this.refreshPepper());
+    const expiresAt = new Date(Date.now() + this.refreshTtlSec() * 1000);
+
     await this.repo.createSession({
       userId: user.id,
       refreshTokenHash,
       deviceName: args.deviceName,
+      expiresAt,
     });
 
     const needsOnboarding = !user.activeHouseholdId;
@@ -133,7 +136,9 @@ export class AuthService {
 
     const newRefresh = makeRefreshToken();
     const newHash = makeRefreshTokenHash(newRefresh, this.refreshPepper());
-    await this.repo.createSession({ userId: session.userId, refreshTokenHash: newHash });
+    const expiresAt = new Date(Date.now() + this.refreshTtlSec() * 1000);
+
+    await this.repo.createSession({ userId: session.userId, refreshTokenHash: newHash, expiresAt });
 
     return { accessToken, refreshToken: newRefresh };
   }
@@ -174,11 +179,13 @@ export class AuthService {
     // ✅ אותו מנגנון refresh כמו OTP כדי ש-refresh/logout יעבדו
     const refreshToken = makeRefreshToken();
     const refreshTokenHash = makeRefreshTokenHash(refreshToken, this.refreshPepper());
+    const expiresAt = new Date(Date.now() + this.refreshTtlSec() * 1000);
 
     await this.repo.createSession({
       userId: user.id,
       refreshTokenHash,
       deviceName,
+      expiresAt,
     });
 
     return {

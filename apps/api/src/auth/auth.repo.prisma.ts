@@ -119,12 +119,18 @@ export class AuthRepoPrisma {
     });
   }
 
-  async createSession(args: { userId: string; refreshTokenHash: string; deviceName?: string }) {
+  async createSession(args: {
+    userId: string;
+    refreshTokenHash: string;
+    deviceName?: string;
+    expiresAt: Date;
+  }) {
     return this.prisma.authSession.create({
       data: {
         userId: args.userId,
         refreshTokenHash: args.refreshTokenHash,
         deviceName: args.deviceName ?? null,
+        expiresAt: args.expiresAt,
         lastUsedAt: new Date(),
       },
     });
@@ -132,7 +138,7 @@ export class AuthRepoPrisma {
 
   async findActiveSessionByHash(refreshTokenHash: string) {
     return this.prisma.authSession.findFirst({
-      where: { refreshTokenHash, revokedAt: null },
+      where: { refreshTokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
     });
   }
 

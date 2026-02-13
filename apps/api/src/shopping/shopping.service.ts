@@ -78,6 +78,7 @@ export class ShoppingService {
         checked: true,
         category: true,
         extra: true,
+        imageUrl: true, // ✅
         createdAt: true,
         updatedAt: true,
       },
@@ -96,6 +97,7 @@ export class ShoppingService {
       category?: ShoppingCategory;
       unit?: ApiUnit;
       extra?: any;
+      imageUrl?: string | null; // ✅ NEW
     },
   ) {
     await this.assertListOwned(householdId, listId);
@@ -109,6 +111,9 @@ export class ShoppingService {
     const unit = this.toPrismaUnit(body.unit);
     const category = body.category ?? null;
     const extra = body.extra ?? null;
+    const imageUrlRaw = body?.imageUrl;
+    const imageUrl =
+      imageUrlRaw === undefined || imageUrlRaw === null ? null : String(imageUrlRaw).trim() || null;
 
     const normalizedText = normalize(text);
     const dedupeKey = makeDedupeKey(text, termId);
@@ -120,6 +125,7 @@ export class ShoppingService {
         data: {
           listId,
           termId,
+          imageUrl,
           text,
           normalizedText,
           dedupeKey,
@@ -133,6 +139,7 @@ export class ShoppingService {
           termId: true, // ✅ מומלץ להחזיר ללקוח
           text: true,
           qty: true,
+          imageUrl: true,
           unit: true,
           checked: true,
           category: true,
@@ -146,11 +153,12 @@ export class ShoppingService {
       if (e?.code === 'P2002') {
         row = await this.prisma.shoppingItem.update({
           where: { listId_dedupeKey: { listId, dedupeKey } }, // דורש unique composite בשם כזה בפריזמה
-          data: { qty, unit, category, extra }, // מה שתרצה “לרענן”
+          data: { qty, unit, category, extra, imageUrl }, // ✅
           select: {
             id: true,
             termId: true,
             text: true,
+            imageUrl: true,
             qty: true,
             unit: true,
             checked: true,
@@ -184,6 +192,7 @@ export class ShoppingService {
       category?: ShoppingCategory | null;
       extra?: any | null;
       checked?: boolean;
+      imageUrl?: string | null;
     },
   ) {
     await this.assertListOwned(householdId, listId);
@@ -209,6 +218,11 @@ export class ShoppingService {
     if (body.extra !== undefined) {
       data.extra = body.extra === null ? null : body.extra;
     }
+    if (body.imageUrl !== undefined) {
+      const v = body.imageUrl === null ? '' : String(body.imageUrl);
+      const trimmed = v.trim();
+      data.imageUrl = trimmed.length ? trimmed : null; // "" => null (הסרה)
+    }
 
     const row = await this.prisma.shoppingItem.update({
       where: { id: itemId },
@@ -221,6 +235,7 @@ export class ShoppingService {
         checked: true,
         category: true,
         extra: true,
+        imageUrl: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -315,6 +330,8 @@ export class ShoppingService {
       for (const it of items) {
         const itemLocalId = String(it?.itemLocalId ?? '');
         if (!itemLocalId) continue;
+        const imageUrlRaw = it?.imageUrl;
+        const imageUrl = imageUrlRaw == null ? null : String(imageUrlRaw).trim() || null;
 
         const text = String(it?.text ?? '').trim();
         if (!text) continue;
@@ -344,6 +361,7 @@ export class ShoppingService {
               checked,
               category,
               extra,
+              imageUrl,
             },
             select: { id: true },
           });

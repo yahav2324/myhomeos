@@ -2,18 +2,26 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
 import helmet from 'helmet';
+import { join } from 'path';
+import * as express from 'express';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdirSync } from 'fs';
 
 const globalPrefix = 'api';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  mkdirSync('uploads/images', { recursive: true });
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.use(
     helmet({
       contentSecurityPolicy: false, // ב-API אין צורך CSP,
       crossOriginResourcePolicy: { policy: 'cross-origin' }, // הוסף את זה
     }),
   );
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   // ✅ CORS קשיח — מותר רק ל-admin-web + mobile origin אם צריך
 
   const isProd = process.env.NODE_ENV === 'production';

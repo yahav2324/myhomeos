@@ -74,6 +74,7 @@ export class ShoppingController {
       category?: ShoppingCategory;
       unit?: ApiUnit;
       extra?: any;
+      imageUrl?: string | null; // ✅ NEW
     },
   ) {
     const householdId = this.getHouseholdId(req);
@@ -94,6 +95,7 @@ export class ShoppingController {
       category?: ShoppingCategory | null;
       extra?: any | null;
       checked?: boolean;
+      imageUrl?: string | null; // ✅ NEW
     },
   ) {
     const householdId = this.getHouseholdId(req);
