@@ -375,6 +375,7 @@ enum ShoppingCategory {
   FROZEN
   DRINKS
   SNACKS
+  SPICES
   CLEANING
   BABY
   PHARM
