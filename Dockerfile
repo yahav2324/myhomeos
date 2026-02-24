@@ -14,8 +14,6 @@ COPY package*.json ./
 # כאן השינוי: העתקה מהנתיב המדויק ב-Monorepo
 COPY apps/api/prisma ./prisma/ 
 
-# ... (המשך ה-Build)
-
 # בשלב ה-Runner, וודא שאתה מעתיק מאותו מקום
 COPY --from=builder /app/apps/api/prisma ./prisma
 # אם הפריזמה בתוך apps/api, שנה ל: COPY apps/api/prisma ./prisma/
