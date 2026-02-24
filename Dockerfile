@@ -1,40 +1,41 @@
-# השתמש ב-Image שכולל את כל מה שצריך ל-Build
+# שלב 1: התקנה ובנייה
 FROM node:22-slim AS builder
 WORKDIR /app
 
-# התקנת תלויות למערכת עבור Prisma
-RUN apt-get update && apt-get install -y openssl
+# התקנת ספריות מערכת עבור Prisma
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-# העתקת קבצי הגדרות
-# ... (חלק עליון נשאר זהה)
-
-# העתקת קבצי הגדרות
+# העתקת קבצי הגדרות מהשורש
 COPY package*.json ./
 
-# כאן השינוי: העתקה מהנתיב המדויק ב-Monorepo
-COPY apps/api/prisma ./prisma/ 
-
-# בשלב ה-Runner, וודא שאתה מעתיק מאותו מקום
-COPY --from=builder /app/apps/api/prisma ./prisma
-# אם הפריזמה בתוך apps/api, שנה ל: COPY apps/api/prisma ./prisma/
-
+# התקנת כל ה-Dependencies
 RUN npm install
 
 # העתקת כל שאר הקוד
 COPY . .
 
-# הרצת ה-Build דרך ה-NX המקומי בתוך ה-Image
-RUN npx nx build api --configuration=production
+# יצירת ה-Client של Prisma (מתוך הנתיב ב-Monorepo)
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
-# שלב הריצה (Runner) - כדי שה-Image יהיה קטן ומהיר
-FROM node:22-slim AS runner
+# הרצת ה-Build של ה-API דרך ה-NX המקומי
+RUN ./node_modules/.bin/nx build api --configuration=production
+
+# שלב 2: הרצה
+FROM node:22-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y openssl
+# התקנת openssl בסביבת ההרצה
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# העתקת הקוד המקומפל והמודולים מהשלב הקודם
 COPY --from=builder /app/dist/api ./dist/api
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/apps/api/prisma ./prisma
 
-# פקודת ההרצה
+# הגדרת משתנה סביבה לפורט
+ENV PORT=3000
+EXPOSE 3000
+
+# פקודת ההרצה: עדכון ה-DB והפעלת השרת
 CMD npx prisma migrate deploy --schema=./prisma/schema.prisma && node dist/api/main.js
