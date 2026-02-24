@@ -10,7 +10,9 @@ RUN npm install
 COPY . .
 
 # כאן השינוי: הוספת ה-Binary Targets בזמן ה-Generate
-RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
+# בתוך שלב ה-builder, שנה את השורה של prisma generate לזו:
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma && \
+    cp -R node_modules/.prisma /app/node_modules/
 
 RUN ./node_modules/.bin/nx build api --configuration=production
 
