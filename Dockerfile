@@ -29,6 +29,10 @@ ENV PORT=3000
 EXPOSE 3000
 
 # הסוד: הרצת generate נוסף בסביבת הריצה לפני ה-Migration
-CMD npx prisma generate --schema=./prisma/schema.prisma && \
+# ... כל השאר נשאר אותו דבר עד ה-CMD ...
+
+# פקודת ההרצה המעודכנת:
+CMD rm -rf node_modules/@prisma/client node_modules/.prisma && \
+    npx prisma generate --schema=./prisma/schema.prisma && \
     npx prisma migrate deploy --schema=./prisma/schema.prisma && \
     node dist/api/main.js
